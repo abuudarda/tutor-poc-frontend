@@ -1,0 +1,10 @@
+{
+  "name": "Socratica — Multimodal AI Tutor Studio",
+  "description": "Interactive multimodal AI tutor workspace featuring pedagogical configuration, live Web Speech synthesis and recognition, interactive concept modules, understanding checkpoints, and a real-time JSON contract inspector.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

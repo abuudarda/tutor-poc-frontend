@@ -1,0 +1,18 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    font-family: var(--font-plus-jakarta), system-ui, sans-serif;
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, .font-display {
+    font-family: var(--font-bricolage), system-ui, sans-serif;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-jetbrains-mono), monospace;
+  }
+}
+
