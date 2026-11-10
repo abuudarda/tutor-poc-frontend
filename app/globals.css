@@ -8,7 +8,7 @@
   }
 
   h1, h2, h3, h4, .font-display {
-    font-family: var(--font-bricolage), system-ui, sans-serif;
+    font-family: var(--font-bricolage), Georgia, serif;
   }
 
   code, pre, .font-mono {
@@ -23,5 +23,3 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
-

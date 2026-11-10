@@ -43,26 +43,26 @@ export function ConceptSimulationDiagram({
           code: '▲ SLOW CONVERGENCE',
           summary:
             'Step size too small — hiker takes tiny cautious shuffles and needs many epochs.',
-          tone: 'text-amber-700 dark:text-amber-300',
+          tone: 'text-amber-800 dark:text-amber-300',
           badgeBg:
-            'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/80',
+            'bg-amber-950/10 border-amber-700/30',
         }
       : learningRate <= 0.65
       ? {
           code: '● OPTIMAL DESCENT',
           summary:
             'Balanced learning rate — hiker descends smoothly into the valley minimum.',
-          tone: 'text-emerald-700 dark:text-emerald-300',
+          tone: 'text-emerald-800 dark:text-emerald-400',
           badgeBg:
-            'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/80',
+            'bg-emerald-950/10 border-emerald-700/30',
         }
       : {
           code: '▲ OVERSHOOT & BOUNCE',
           summary:
             'Step size too high — hiker leaps across the canyon walls and risks diverging!',
-          tone: 'text-rose-700 dark:text-rose-300',
+          tone: 'text-rose-800 dark:text-rose-300',
           badgeBg:
-            'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800/80',
+            'bg-rose-950/10 border-rose-700/30',
         };
 
   return (
@@ -70,17 +70,20 @@ export function ConceptSimulationDiagram({
       id="sidebar-loss-landscape-sandbox"
       data-module-id={moduleId}
       data-module-index={moduleIndex}
-      className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-3.5 space-y-3"
+      className="rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3.5 space-y-3"
     >
       {/* Header */}
-      <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-200/80 dark:border-slate-800">
+      <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-stone-300/80 dark:border-zinc-800">
         <div className="flex items-start gap-2 min-w-0">
-          <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+          <Sliders className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <h3 className="text-xs font-bold text-slate-900 dark:text-white leading-snug">
+            <span className="block uppercase tracking-wider text-[10px] font-mono text-stone-500 dark:text-stone-400">
+              01 // PARAMETER SANDBOX
+            </span>
+            <h3 className="text-xs font-bold text-zinc-900 dark:text-stone-100 leading-snug font-display">
               Interactive Loss Landscape Sandbox — Test the Hiker Analogy
             </h3>
-            <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+            <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 truncate mt-0.5">
               Active: {title}
             </p>
           </div>
@@ -92,7 +95,7 @@ export function ConceptSimulationDiagram({
             setLearningRate(0.35);
             setStepCount(5);
           }}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer shrink-0"
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-mono text-stone-700 dark:text-stone-300 hover:text-zinc-900 dark:hover:text-white bg-[#FCFBF9] dark:bg-[#181816] border border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer shrink-0"
           aria-label="Reset simulation parameters"
         >
           <RotateCcw className="w-3 h-3" />
@@ -100,16 +103,16 @@ export function ConceptSimulationDiagram({
         </button>
       </div>
 
-      {/* Regime Status Pill */}
+      {/* Regime Status Readout */}
       <div
-        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-[11px] font-mono font-semibold ${regimeStatus.badgeBg} ${regimeStatus.tone}`}
+        className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-none border text-[11px] font-mono font-semibold ${regimeStatus.badgeBg} ${regimeStatus.tone}`}
       >
         <span>{regimeStatus.code}</span>
         <span className="tabular-nums">η = {learningRate.toFixed(2)}</span>
       </div>
 
       {/* SVG Loss Curve Visualizer (Sized cleanly for Sidebar width) */}
-      <div className="rounded-lg bg-white dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800/80 p-2.5 overflow-hidden">
+      <div className="rounded-md bg-[#FCFBF9] dark:bg-[#181816] border border-stone-300/80 dark:border-zinc-800 p-2.5 overflow-hidden">
         <svg
           viewBox="0 0 320 142"
           className="w-full h-32 block"
@@ -123,7 +126,7 @@ export function ConceptSimulationDiagram({
             x2="300"
             y2="120"
             stroke="currentColor"
-            className="text-slate-200 dark:text-slate-800"
+            className="text-stone-300 dark:text-zinc-800"
             strokeWidth="1"
           />
           <line
@@ -132,7 +135,7 @@ export function ConceptSimulationDiagram({
             x2="160"
             y2="125"
             stroke="currentColor"
-            className="text-slate-200 dark:text-slate-800"
+            className="text-stone-300 dark:text-zinc-800"
             strokeDasharray="3 3"
             strokeWidth="1"
           />
@@ -142,17 +145,17 @@ export function ConceptSimulationDiagram({
             d="M 28 16 Q 160 224 292 16"
             fill="none"
             stroke="currentColor"
-            className="text-slate-400 dark:text-slate-600"
+            className="text-stone-500 dark:text-stone-500"
             strokeWidth="2"
           />
 
           {/* Minimum Target Marker */}
-          <circle cx="160" cy="120" r="4.5" className="fill-emerald-500" />
+          <circle cx="160" cy="120" r="4.5" className="fill-emerald-700 dark:fill-emerald-400" />
           <text
             x="160"
             y="136"
             textAnchor="middle"
-            className="fill-slate-500 dark:fill-slate-400 text-[9.5px] font-mono"
+            className="fill-stone-600 dark:fill-stone-400 text-[9.5px] font-mono"
           >
             Global Minimum (Valley Floor)
           </text>
@@ -168,7 +171,7 @@ export function ConceptSimulationDiagram({
                     y1={pt.y}
                     x2={next.x}
                     y2={next.y}
-                    stroke="#4f46e5"
+                    stroke="#D95D39"
                     strokeWidth="1.8"
                     strokeDasharray="3 2"
                   />
@@ -179,10 +182,10 @@ export function ConceptSimulationDiagram({
                   r={i === 0 ? 5 : i === trajectory.length - 1 ? 4.5 : 3.2}
                   className={
                     i === 0
-                      ? 'fill-amber-500 stroke-white dark:stroke-slate-900 stroke-2'
+                      ? 'fill-zinc-900 dark:fill-stone-100 stroke-[#FCFBF9] dark:stroke-[#181816] stroke-2'
                       : i === trajectory.length - 1
-                      ? 'fill-indigo-600 dark:fill-indigo-400 stroke-white dark:stroke-slate-900 stroke-2'
-                      : 'fill-indigo-500/80'
+                      ? 'fill-[#D95D39] stroke-[#FCFBF9] dark:stroke-[#181816] stroke-2'
+                      : 'fill-[#D95D39]/80'
                   }
                 />
               </g>
@@ -197,11 +200,11 @@ export function ConceptSimulationDiagram({
           <div className="flex justify-between text-xs mb-1">
             <label
               htmlFor="sim-lr-slider"
-              className="font-medium text-slate-700 dark:text-slate-300"
+              className="font-mono text-[11px] text-stone-700 dark:text-stone-300"
             >
               Learning Rate (η Step Size):
             </label>
-            <span className="font-mono tabular-nums font-semibold text-indigo-600 dark:text-indigo-400">
+            <span className="font-mono tabular-nums font-semibold text-[#D95D39] dark:text-[#E87A5A]">
               {learningRate.toFixed(2)}
             </span>
           </div>
@@ -213,9 +216,9 @@ export function ConceptSimulationDiagram({
             step={0.05}
             value={learningRate}
             onChange={(e) => setLearningRate(parseFloat(e.target.value))}
-            className="w-full accent-indigo-600 cursor-pointer"
+            className="w-full accent-[#D95D39] cursor-pointer"
           />
-          <div className="flex justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+          <div className="flex justify-between text-[10px] font-mono text-stone-500 dark:text-stone-400 mt-0.5">
             <span>0.05 (Tiny)</span>
             <span>0.35 (Ideal)</span>
             <span>0.95 (Overshoot)</span>
@@ -226,11 +229,11 @@ export function ConceptSimulationDiagram({
           <div className="flex justify-between text-xs mb-1">
             <label
               htmlFor="sim-steps-slider"
-              className="font-medium text-slate-700 dark:text-slate-300"
+              className="font-mono text-[11px] text-stone-700 dark:text-stone-300"
             >
               Descent Steps Simulated:
             </label>
-            <span className="font-mono tabular-nums font-semibold text-slate-700 dark:text-slate-300">
+            <span className="font-mono tabular-nums font-semibold text-zinc-800 dark:text-stone-300">
               {stepCount} steps
             </span>
           </div>
@@ -242,11 +245,11 @@ export function ConceptSimulationDiagram({
             step={1}
             value={stepCount}
             onChange={(e) => setStepCount(parseInt(e.target.value, 10))}
-            className="w-full accent-indigo-600 cursor-pointer"
+            className="w-full accent-[#D95D39] cursor-pointer"
           />
         </div>
 
-        <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+        <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-relaxed">
           {regimeStatus.summary}
         </p>
       </div>

@@ -8,7 +8,6 @@ import {
   Code2,
   ChevronDown,
   ChevronUp,
-  Sparkles,
   Check,
   Copy,
   Server,
@@ -132,44 +131,45 @@ export function SetupStudio({
   };
 
   return (
-    <section className="max-w-[1280px] mx-auto px-6 py-6">
-      {/* Studio Intro Header & Curriculum Quick-Loaders */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-6 border-b border-slate-200 dark:border-slate-800">
-        <div className="space-y-1.5 max-w-2xl">
-          <p className="text-xs font-medium tracking-wide text-indigo-600 dark:text-indigo-400">
-            01. Pedagogical Session Configuration · The Setup Studio
+    <section className="max-w-[1360px] mx-auto px-6 py-8">
+      {/* Publication Masthead & Syllabus Quick-Loaders */}
+      <div className="space-y-4 pb-6 border-b border-stone-300/80 dark:border-zinc-800">
+        <div className="space-y-1.5 max-w-3xl">
+          <p className="uppercase tracking-wider text-[11px] font-mono text-[#D95D39] dark:text-[#E87A5A] font-semibold">
+            01 // PUBLICATION &amp; SYLLABUS DESK · THE SETUP STUDIO
           </p>
           <h1
-            className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white font-display"
+            className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display"
             style={{ textWrap: 'balance' }}
           >
             Transform Study Material into an Interactive Voice Classroom
           </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-            Upload lecture documents or images via NVIDIA Nemotron Parse, calibrate the teaching
-            methodology and explanation depth, and launch your live AI Tutor session.
+          <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+            Ingest lecture manuscripts or technical diagrams via NVIDIA Nemotron Parse, calibrate
+            pedagogical pacing and methodology, and compile a structured voice classroom.
           </p>
         </div>
 
         {/* Sample Curriculum Quick-Switch */}
-        <div className="flex flex-col items-start lg:items-end gap-2 shrink-0">
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Load Sample Study Material:
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <span className="uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400">
+            LOAD ARCHIVAL SAMPLE SYLLABUS:
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            {PRESET_STUDY_MATERIALS.map((preset) => {
+            {PRESET_STUDY_MATERIALS.map((preset, idx) => {
               const isSelected = fileName === preset.fileName;
               return (
                 <button
                   key={preset.id}
                   type="button"
                   onClick={() => onSelectPreset(preset.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-3 py-1.5 text-xs font-mono rounded-md border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     isSelected
-                      ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                      ? 'bg-[#D95D39] border-[#D95D39] text-white font-semibold'
+                      : 'bg-[#FCFBF9] dark:bg-[#181816] border-stone-300/80 dark:border-zinc-800 text-zinc-800 dark:text-stone-300 hover:bg-[#EFECE6] dark:hover:bg-[#222220]'
                   }`}
                 >
+                  <span className="opacity-70 mr-1.5">0{idx + 1}</span>
                   {preset.label}
                 </button>
               );
@@ -178,22 +178,25 @@ export function SetupStudio({
         </div>
       </div>
 
-      {/* Main Two-Column Setup Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 items-start">
-        {/* Left Column (5 cols): 1. Material Upload Zone & Backend Contract Mode */}
-        <div className="lg:col-span-5 space-y-5">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <h2 className="text-base font-semibold text-slate-900 dark:text-white font-display">
-                  1. Study Material Upload Zone
+      {/* Two-Column Publication & Syllabus Desk */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 border-b border-x border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]">
+        {/* Left Column (5 cols): Document Upload & Source Inspector */}
+        <div className="lg:col-span-5 lg:border-r border-stone-300/80 dark:border-zinc-800 divide-y divide-stone-300/80 dark:divide-zinc-800 flex flex-col justify-between">
+          <div className="p-6 space-y-5">
+            <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-[#D95D39] dark:text-[#E87A5A]">
+                  01
+                </span>
+                <BookOpen className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
+                <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                  DOCUMENT UPLOAD &amp; SOURCE INSPECTOR
                 </h2>
               </div>
 
               {/* Tab Switcher: Upload vs Paste Raw Text */}
               <div
-                className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/90 rounded-lg"
+                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
                 role="tablist"
                 aria-label="Study material input method"
               >
@@ -202,10 +205,10 @@ export function SetupStudio({
                   role="tab"
                   aria-selected={materialTab === 'upload'}
                   onClick={() => setMaterialTab('upload')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     materialTab === 'upload'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
                   }`}
                 >
                   Upload File
@@ -215,10 +218,10 @@ export function SetupStudio({
                   role="tab"
                   aria-selected={materialTab === 'paste'}
                   onClick={() => setMaterialTab('paste')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     materialTab === 'paste'
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                      ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
                   }`}
                 >
                   Paste Raw Text
@@ -227,7 +230,8 @@ export function SetupStudio({
             </div>
 
             {materialTab === 'upload' ? (
-              <div className="pt-4 space-y-4">
+              <div className="space-y-4">
+                {/* Technical Blueprint Dropzone with dashed 1px stone border */}
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -235,10 +239,10 @@ export function SetupStudio({
                   }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
-                  className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors ${
+                  className={`rounded-md border border-dashed p-5 text-center transition-colors ${
                     isDragging
-                      ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30'
-                      : 'border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-950/40 hover:border-indigo-400 dark:hover:border-indigo-600'
+                      ? 'border-[#D95D39] bg-[#D95D39]/5'
+                      : 'border-stone-400 dark:border-zinc-700 bg-[#F7F6F2] dark:bg-[#111110] hover:border-[#D95D39]'
                   }`}
                 >
                   <input
@@ -255,29 +259,29 @@ export function SetupStudio({
 
                   {isParsingDocument ? (
                     <div className="py-2 flex flex-col items-center justify-center space-y-2">
-                      <Loader2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400 animate-spin" />
-                      <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
-                        Parsing document via NVIDIA Nemotron Parse...
+                      <Loader2 className="w-5 h-5 text-[#D95D39] dark:text-[#E87A5A] animate-spin" />
+                      <p className="text-xs font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                        PARSING DOCUMENT VIA NVIDIA NEMOTRON PARSE...
                       </p>
-                      <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                      <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
                         POST {cleanBase || 'local'}/api/v1/parse-document
                       </p>
                     </div>
                   ) : (
                     <>
-                      <Upload className="w-5 h-5 text-indigo-600 dark:text-indigo-400 mx-auto mb-1.5" />
-                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Drag & drop your study file here, or{' '}
+                      <Upload className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] mx-auto mb-2" />
+                      <p className="text-xs font-medium text-zinc-900 dark:text-stone-200">
+                        Drop manuscript file here, or{' '}
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="text-indigo-600 dark:text-indigo-400 underline underline-offset-2 font-semibold hover:text-indigo-500 cursor-pointer"
+                          className="text-[#D95D39] dark:text-[#E87A5A] underline underline-offset-2 font-semibold cursor-pointer"
                         >
-                          browse files
+                          browse local archive
                         </button>
                       </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Supports .pdf, .png, .jpg, .jpeg, .txt, .md, or .docx via Nemotron Parse
+                      <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 mt-1">
+                        ACCEPTED: .PDF · .PNG · .JPG · .TXT · .MD · .DOCX
                       </p>
                     </>
                   )}
@@ -286,7 +290,7 @@ export function SetupStudio({
                 {parseError && (
                   <div
                     role="alert"
-                    className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-800 dark:text-amber-300"
+                    className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-950/10 text-xs text-amber-800 dark:text-amber-300 font-mono"
                   >
                     <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                     <span>{parseError}</span>
@@ -295,58 +299,61 @@ export function SetupStudio({
 
                 {/* Extracted Text Preview Snippet */}
                 <div>
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
-                    <label htmlFor="extracted-preview-textarea" className="font-medium">
-                      Extracted Source Text Preview (Editable):
+                  <div className="flex items-center justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1.5">
+                    <label
+                      htmlFor="extracted-preview-textarea"
+                      className="uppercase tracking-wider"
+                    >
+                      EXTRACTED MANUSCRIPT TEXT (EDITABLE):
                     </label>
                     <button
                       type="button"
                       onClick={() => setMaterialTab('paste')}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                      className="text-[#D95D39] dark:text-[#E87A5A] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
                     >
-                      Expand editor
+                      EXPAND FULL EDITOR →
                     </button>
                   </div>
                   <textarea
                     id="extracted-preview-textarea"
-                    rows={3}
+                    rows={5}
                     value={rawText}
                     onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-800 dark:text-stone-300 focus:outline-none focus:border-[#D95D39]"
                     placeholder="Extracted text from your file will appear here..."
                   />
                 </div>
               </div>
             ) : (
-              <div className="pt-4 space-y-3">
+              <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label
                       htmlFor="custom-file-name"
-                      className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                      className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
                     >
-                      Source Document Name
+                      SOURCE DOCUMENT NAME
                     </label>
                     <input
                       id="custom-file-name"
                       type="text"
                       value={fileName}
                       onChange={(e) => onUpdateMaterial(e.target.value, contentType, rawText)}
-                      className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
                     />
                   </div>
                   <div>
                     <label
                       htmlFor="custom-mime-type"
-                      className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                      className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
                     >
-                      Content MIME Type
+                      CONTENT MIME TYPE
                     </label>
                     <select
                       id="custom-mime-type"
                       value={contentType}
                       onChange={(e) => onUpdateMaterial(fileName, e.target.value, rawText)}
-                      className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
                     >
                       <option value="application/pdf">application/pdf</option>
                       <option value="text/markdown">text/markdown</option>
@@ -363,70 +370,70 @@ export function SetupStudio({
                 <div>
                   <label
                     htmlFor="raw-study-text-input"
-                    className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
+                    className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
                   >
-                    Paste Raw Study Material / Lecture Transcript (Min 20 characters)
+                    RAW MANUSCRIPT / LECTURE TRANSCRIPT (MIN 20 CHARS)
                   </label>
                   <textarea
                     id="raw-study-text-input"
-                    rows={7}
+                    rows={8}
                     value={rawText}
                     onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
                     placeholder="Paste your chapter text, formulas, or lecture notes here..."
-                    className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
                   />
                 </div>
               </div>
             )}
 
-            {/* File Preview Metadata Bar (Unboxed clean metadata with typographic separators) */}
-            <div className="mt-4 pt-3 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
+            {/* File Preview Metadata Bar */}
+            <div className="pt-3 border-t border-stone-300/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600 dark:text-stone-400">
               <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span className="font-mono font-medium text-slate-900 dark:text-slate-200 truncate">
+                <FileText className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
+                <span className="font-mono font-semibold text-zinc-900 dark:text-stone-200 truncate">
                   {fileMeta.fileName}
                 </span>
                 {(sourceFile || sourceFileUrl) && (
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-mono shrink-0">
-                    Classroom Viewer Ready
+                  <span className="px-1.5 py-0.5 rounded-none text-emerald-800 bg-emerald-950/10 border border-emerald-700/30 dark:text-emerald-400 text-[10px] font-mono uppercase tracking-wider shrink-0">
+                    READER READY
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 font-mono tabular-nums text-slate-500 dark:text-slate-400">
+              <div className="flex items-center gap-2 font-mono tabular-nums text-[11px] text-stone-500 dark:text-stone-400">
                 <span>
-                  {fileMeta.pageCount} {fileMeta.pageCount === 1 ? 'page' : 'pages'}
+                  {fileMeta.pageCount} {fileMeta.pageCount === 1 ? 'PG' : 'PGS'}
                 </span>
                 <span aria-hidden="true">·</span>
-                <span>{fileMeta.wordCount} words</span>
+                <span>{fileMeta.wordCount} WORDS</span>
                 <span aria-hidden="true">·</span>
-                <span>~{fileMeta.estimatedReadingMinutes} min read</span>
+                <span>~{fileMeta.estimatedReadingMinutes} MIN</span>
               </div>
             </div>
           </div>
 
           {/* Backend Execution Mode & Live FastAPI Base URL */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3.5">
+          <div className="p-6 bg-[#EFECE6]/50 dark:bg-[#141413] space-y-3.5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
-                <Server className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-display">
-                  Backend Execution Mode
+                <Server className="w-3.5 h-3.5 text-stone-600 dark:text-stone-400 shrink-0" />
+                <h3 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                  STUDIO TELEMETRY // BACKEND ENDPOINT
                 </h3>
               </div>
 
-              {/* Segmented Toggle: Live API Mode (default) vs Mock Backend Mode */}
+              {/* Segmented Toggle: Live API Mode vs Mock Fallback */}
               <div
-                className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg"
+                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
                 role="group"
                 aria-label="Backend mode selection"
               >
                 <button
                   type="button"
                   onClick={() => onToggleMockBackend(false)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     !mockBackendMode
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-[#D95D39] text-white font-semibold'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
                   }`}
                 >
                   Live API Mode
@@ -434,10 +441,10 @@ export function SetupStudio({
                 <button
                   type="button"
                   onClick={() => onToggleMockBackend(true)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     mockBackendMode
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      ? 'bg-[#D95D39] text-white font-semibold'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
                   }`}
                 >
                   Mock Fallback
@@ -447,15 +454,15 @@ export function SetupStudio({
 
             {!mockBackendMode ? (
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center justify-between text-[11px] font-mono">
                   <label
                     htmlFor="backend-base-url-input"
-                    className="font-medium text-slate-700 dark:text-slate-300"
+                    className="uppercase tracking-wider text-stone-600 dark:text-stone-400"
                   >
-                    FastAPI Backend Base URL
+                    FASTAPI BASE URL
                   </label>
-                  <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                    ● Connected Contract
+                  <span className="text-emerald-800 dark:text-emerald-400 font-semibold">
+                    ● ONLINE CONTRACT
                   </span>
                 </div>
                 <input
@@ -464,36 +471,36 @@ export function SetupStudio({
                   value={backendBaseUrl}
                   onChange={(e) => onChangeBackendBaseUrl(e.target.value)}
                   placeholder="https://tutor-poc-backend.vercel.app"
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Calls <code className="font-mono">/api/v1/parse-document</code>,{' '}
-                  <code className="font-mono">/api/v1/generate-lesson</code>,{' '}
-                  <code className="font-mono">/api/v1/evaluate-checkpoint</code>, and{' '}
-                  <code className="font-mono">/api/v1/tutor-chat</code> on the configured host.
+                <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 leading-relaxed">
+                  ROUTES: <code>/api/v1/parse-document</code> · <code>/api/v1/generate-lesson</code>{' '}
+                  · <code>/api/v1/evaluate-checkpoint</code> · <code>/api/v1/tutor-chat</code>
                 </p>
               </div>
             ) : (
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Simulates all 5 FastAPI endpoints locally in-browser with deterministic responses so
-                you can test offline or compare against live backend payloads.
+              <p className="text-xs font-mono text-stone-600 dark:text-stone-400 leading-relaxed">
+                Simulates all 5 FastAPI endpoints locally in-browser with deterministic responses.
               </p>
             )}
           </div>
         </div>
 
-        {/* Right Column (7 cols): 2. Pedagogical Configuration Controls & 3. Payload Inspector */}
-        <div className="lg:col-span-7 space-y-5">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-5">
-            <div className="flex items-center justify-between gap-4 pb-3.5 border-b border-slate-200/80 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <h2 className="text-base font-semibold text-slate-900 dark:text-white font-display">
-                  2. Pedagogical Configuration Controls
+        {/* Right Column (7 cols): Pedagogical Spec Sheet & Compile Action */}
+        <div className="lg:col-span-7 divide-y divide-stone-300/80 dark:divide-zinc-800 flex flex-col justify-between">
+          <div className="p-6 space-y-6">
+            <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs font-semibold text-[#D95D39] dark:text-[#E87A5A]">
+                  02
+                </span>
+                <Sliders className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
+                <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                  PEDAGOGICAL SPECIFICATION SHEET
                 </h2>
               </div>
-              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                tutor_config schema
+              <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400 uppercase tracking-wider">
+                SCHEMA: TUTOR_CONFIG
               </span>
             </div>
 
@@ -502,15 +509,15 @@ export function SetupStudio({
               <div>
                 <label
                   htmlFor="education-level-select"
-                  className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5"
+                  className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1.5"
                 >
-                  Education Level
+                  02.A // TARGET ACADEMIC LEVEL
                 </label>
                 <select
                   id="education-level-select"
                   value={educationLevel}
                   onChange={(e) => onChangeEducationLevel(e.target.value as EducationLevel)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-2 text-xs font-medium text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
                 >
                   {EDUCATION_LEVEL_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -523,15 +530,15 @@ export function SetupStudio({
               <div>
                 <label
                   htmlFor="tutor-persona-select"
-                  className="block text-xs font-semibold text-slate-800 dark:text-slate-200 mb-1.5"
+                  className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1.5"
                 >
-                  Tutor Voice & Persona
+                  02.B // TUTOR CADENCE &amp; PERSONA
                 </label>
                 <select
                   id="tutor-persona-select"
                   value={persona}
                   onChange={(e) => onChangePersona(e.target.value as TutorPersona)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-2 text-xs font-medium text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
                 >
                   {PERSONA_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -543,15 +550,15 @@ export function SetupStudio({
             </div>
 
             {/* Row 2: Explanation Simplicity / Pacing Slider (1-5) */}
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 space-y-2">
+            <div className="p-4 rounded-md bg-[#F7F6F2] dark:bg-[#111110] border border-stone-300/80 dark:border-zinc-800 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label
                   htmlFor="simplicity-slider"
-                  className="text-xs font-semibold text-slate-800 dark:text-slate-200"
+                  className="uppercase tracking-wider text-[11px] font-mono text-stone-600 dark:text-stone-400"
                 >
-                  Explanation Simplicity / Pacing (1–5)
+                  02.C // EXPLANATION SIMPLICITY &amp; PACING (1–5)
                 </label>
-                <span className="text-xs font-mono font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">
+                <span className="text-xs font-mono font-semibold text-[#D95D39] dark:text-[#E87A5A] tabular-nums">
                   {SIMPLICITY_LABELS[simplicityLevel].short}
                 </span>
               </div>
@@ -566,31 +573,31 @@ export function SetupStudio({
                 onChange={(e) =>
                   onChangeSimplicityLevel(parseInt(e.target.value, 10) as SimplicityLevel)
                 }
-                className="w-full accent-indigo-600 cursor-pointer"
+                className="w-full accent-[#D95D39] cursor-pointer"
               />
 
-              <div className="flex justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                <span>1: ELI5 & Heavy Analogies</span>
-                <span>3: Balanced</span>
-                <span>5: Rigorous Academic Depth</span>
+              <div className="flex justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                <span>1: ELI5 &amp; ANALOGIES</span>
+                <span>3: BALANCED</span>
+                <span>5: RIGOROUS DEPTH</span>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-400">
+              <p className="text-xs text-stone-600 dark:text-stone-400">
                 {SIMPLICITY_LABELS[simplicityLevel].description}
               </p>
             </div>
 
-            {/* Row 3: Teaching Methodology (Segmented Control) */}
+            {/* Row 3: Teaching Methodology (Architectural Segmented Grid) */}
             <div className="space-y-2">
-              <span className="block text-xs font-semibold text-slate-800 dark:text-slate-200">
-                Teaching Methodology
+              <span className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                02.D // TEACHING METHODOLOGY
               </span>
               <div
-                className="grid grid-cols-1 sm:grid-cols-3 gap-2.5"
+                className="grid grid-cols-1 sm:grid-cols-3 border border-stone-300/80 dark:border-zinc-800 rounded-md overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-stone-300/80 dark:divide-zinc-800"
                 role="radiogroup"
                 aria-label="Teaching Methodology"
               >
-                {METHODOLOGY_OPTIONS.map((item) => {
+                {METHODOLOGY_OPTIONS.map((item, idx) => {
                   const active = methodology === item.value;
                   return (
                     <button
@@ -599,21 +606,24 @@ export function SetupStudio({
                       role="radio"
                       aria-checked={active}
                       onClick={() => onChangeMethodology(item.value)}
-                      className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                      className={`text-left p-3.5 transition-colors cursor-pointer ${
                         active
-                          ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/50 text-slate-900 dark:text-white ring-1 ring-indigo-600/30'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/40 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+                          ? 'bg-[#EFECE6] dark:bg-[#222220] text-zinc-900 dark:text-stone-100 border-t-2 border-t-[#D95D39]'
+                          : 'bg-[#FCFBF9] dark:bg-[#181816] text-stone-700 dark:text-stone-300 hover:bg-[#F7F6F2] dark:hover:bg-[#141413]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-xs font-semibold whitespace-nowrap shrink-0">
+                        <span className="text-xs font-semibold font-display whitespace-nowrap shrink-0">
+                          <span className="font-mono text-[11px] text-stone-500 mr-1">
+                            0{idx + 1}.
+                          </span>
                           {item.label}
                         </span>
                         {active && (
-                          <Check className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <Check className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                      <p className="text-[11px] text-stone-600 dark:text-stone-400 leading-snug">
                         {item.subtitle}
                       </p>
                     </button>
@@ -622,22 +632,22 @@ export function SetupStudio({
               </div>
             </div>
 
-            {/* Row 4: Learning Focus (Multi-select Interactive Controls) */}
+            {/* Row 4: Learning Focus (Multi-select Rectangular Spec Switches) */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                  Learning Focus Areas (Multi-Select · Required by FastAPI Schema)
+                <span className="uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                  02.E // LEARNING FOCUS AREAS (MULTI-SELECT)
                 </span>
-                <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                  {focusAreas.length} selected
+                <span className="text-[11px] font-mono tabular-nums text-stone-500 dark:text-stone-400">
+                  {focusAreas.length} ACTIVE
                 </span>
               </div>
               <div
-                className="flex flex-wrap gap-2"
+                className="grid grid-cols-1 sm:grid-cols-2 gap-2"
                 role="group"
                 aria-label="Learning Focus Areas"
               >
-                {FOCUS_AREA_OPTIONS.map((area) => {
+                {FOCUS_AREA_OPTIONS.map((area, idx) => {
                   const isSelected = focusAreas.includes(area.value);
                   return (
                     <button
@@ -645,18 +655,20 @@ export function SetupStudio({
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onToggleFocusArea(area.value)}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-md text-xs font-mono border transition-colors cursor-pointer ${
                         isSelected
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                          : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                          ? 'bg-zinc-900 dark:bg-stone-100 text-stone-100 dark:text-zinc-900 border-zinc-900 dark:border-stone-100 font-semibold'
+                          : 'bg-[#F7F6F2] dark:bg-[#111110] text-stone-700 dark:text-stone-300 border-stone-300/80 dark:border-zinc-800 hover:border-stone-400 dark:hover:border-zinc-700'
                       }`}
                     >
+                      <span>
+                        0{idx + 1} · {area.label}
+                      </span>
                       <Check
                         className={`w-3.5 h-3.5 transition-opacity ${
-                          isSelected ? 'opacity-100' : 'opacity-0 w-0 -mr-2'
+                          isSelected ? 'opacity-100 text-[#D95D39]' : 'opacity-0'
                         }`}
                       />
-                      {area.label}
                     </button>
                   );
                 })}
@@ -664,48 +676,48 @@ export function SetupStudio({
             </div>
           </div>
 
-          {/* 3. Payload Inspector & Action Card */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+          {/* 3. Payload Inspector & Compile Action Footer */}
+          <div className="bg-[#EFECE6]/60 dark:bg-[#141413]">
             {/* Collapsible "Preview Outgoing JSON" Drawer Trigger */}
-            <div className="px-5 py-3.5 bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+            <div className="px-6 py-3 border-b border-stone-300/80 dark:border-zinc-800 flex items-center justify-between gap-4">
               <button
                 type="button"
                 aria-expanded={isJsonPreviewOpen}
                 onClick={() => setIsJsonPreviewOpen((prev) => !prev)}
-                className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                className="flex items-center gap-2 text-xs font-mono text-zinc-800 dark:text-stone-200 hover:text-[#D95D39] dark:hover:text-[#E87A5A] transition-colors cursor-pointer"
               >
-                <Code2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <Code2 className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
                 <span>
-                  Preview Outgoing JSON (POST {cleanBase || ''}/api/v1/generate-lesson)
+                  PREVIEW OUTGOING PAYLOAD (POST {cleanBase || ''}/api/v1/generate-lesson)
                 </span>
                 {isJsonPreviewOpen ? (
-                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                  <ChevronUp className="w-3.5 h-3.5 text-stone-500" />
                 ) : (
-                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                  <ChevronDown className="w-3.5 h-3.5 text-stone-500" />
                 )}
               </button>
 
               <button
                 type="button"
                 onClick={handleCopyJson}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono text-stone-700 dark:text-stone-300 hover:text-zinc-900 dark:hover:text-white border border-stone-300/80 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 {copiedJson ? (
                   <>
-                    <Check className="w-3.5 h-3.5 text-emerald-500" />
-                    Copied
+                    <Check className="w-3 h-3 text-emerald-700 dark:text-emerald-400" />
+                    COPIED
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3.5 h-3.5" />
-                    Copy Payload
+                    <Copy className="w-3 h-3" />
+                    COPY JSON
                   </>
                 )}
               </button>
             </div>
 
             {isJsonPreviewOpen && (
-              <div className="p-4 bg-slate-950 text-slate-100 border-b border-slate-800 overflow-x-auto max-h-72">
+              <div className="p-4 bg-[#111110] text-stone-200 border-b border-zinc-800 overflow-x-auto max-h-72">
                 <pre className="text-xs font-mono leading-relaxed">
                   {JSON.stringify(outgoingPayload, null, 2)}
                 </pre>
@@ -713,22 +725,21 @@ export function SetupStudio({
             )}
 
             {/* Primary CTA & Multi-Step Loading State */}
-            <div className="p-5 space-y-3.5">
+            <div className="p-6 space-y-3.5">
               {!isTextValidForGeneration && (
                 <div
                   role="alert"
-                  className="p-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-800 dark:text-amber-300"
+                  className="p-3 rounded-md border border-amber-600/40 bg-amber-950/10 text-xs font-mono text-amber-800 dark:text-amber-300"
                 >
                   Source text must be at least 20 characters before calling{' '}
-                  <code className="font-mono">/api/v1/generate-lesson</code> (currently{' '}
-                  {rawText.trim().length} chars).
+                  <code>/api/v1/generate-lesson</code> (currently {rawText.trim().length} chars).
                 </div>
               )}
 
               {generationError && (
                 <div
                   role="alert"
-                  className="p-3.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300"
+                  className="p-3.5 rounded-md border border-rose-600/40 bg-rose-950/10 text-xs font-mono text-rose-800 dark:text-rose-300"
                 >
                   {generationError}
                 </div>
@@ -736,14 +747,14 @@ export function SetupStudio({
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-0.5">
-                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                  <p className="text-xs font-semibold text-zinc-900 dark:text-stone-100">
                     {isGenerating
-                      ? 'NVIDIA Nemotron 3.5 Bolt (enable_thinking=True) is structuring your lesson...'
+                      ? 'NVIDIA Nemotron 3.5 Bolt (enable_thinking=True) is compiling your lesson...'
                       : 'Ready to compile interactive concept modules'}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                    Session: {outgoingPayload.session_id.slice(0, 13)}... · Target:{' '}
-                    {mockBackendMode ? 'Mock Engine' : cleanBase || 'Local API'}
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">
+                    SESSION: {outgoingPayload.session_id.slice(0, 13)}... · TARGET:{' '}
+                    {mockBackendMode ? 'MOCK ENGINE' : cleanBase || 'LOCAL API'}
                   </p>
                 </div>
 
@@ -751,17 +762,16 @@ export function SetupStudio({
                   type="button"
                   disabled={isGenerating || isParsingDocument || !isTextValidForGeneration}
                   onClick={onGenerateLesson}
-                  className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-sm cursor-pointer whitespace-nowrap shrink-0"
+                  className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-md text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] border border-[#D95D39] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
                   {isGenerating ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{generationStepText || 'Synthesizing Lesson...'}</span>
+                      <span>{generationStepText || 'Compiling Lesson...'}</span>
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Generate Interactive Lesson</span>
+                      <span>Compile Lesson</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -774,3 +784,4 @@ export function SetupStudio({
     </section>
   );
 }
+

@@ -10,7 +10,6 @@ import {
   RotateCcw,
   BookOpen,
   Type,
-  Sparkles,
   Image as ImageIcon,
   FileCode2,
   ArrowUpRight,
@@ -71,7 +70,10 @@ export function SourceMaterialViewer({
   // Split rawSourceText into clean numbered paragraphs
   const paragraphs = useMemo(() => {
     const cleaned = (rawSourceText || '').trim();
-    if (!cleaned) return ['No source text available. Upload a document or paste study notes in the Setup Studio.'];
+    if (!cleaned)
+      return [
+        'No source text available. Upload a document or paste study notes in the Setup Studio.',
+      ];
     const split = cleaned
       .split(/\n\s*\n/)
       .map((p) => p.trim())
@@ -99,7 +101,7 @@ export function SourceMaterialViewer({
       part.toLowerCase() === q.toLowerCase() ? (
         <mark
           key={idx}
-          className="bg-amber-200 dark:bg-amber-500/40 text-slate-900 dark:text-amber-100 px-1 rounded font-semibold"
+          className="bg-[#D95D39]/25 text-zinc-900 dark:text-stone-100 px-1 rounded-none font-semibold"
         >
           {part}
         </mark>
@@ -134,33 +136,33 @@ export function SourceMaterialViewer({
       : 'text-sm leading-relaxed';
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden flex flex-col">
+    <div className="rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] overflow-hidden flex flex-col">
       {/* Top Utility Bar */}
-      <div className="px-4 py-3 bg-slate-50/90 dark:bg-slate-950/80 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+      <div className="px-4 py-3 bg-[#EFECE6]/70 dark:bg-[#141413] border-b border-stone-300/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           {isPdfMaterial ? (
-            <FileText className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <FileText className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
           ) : isImageMaterial ? (
-            <ImageIcon className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <ImageIcon className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
           ) : (
-            <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <BookOpen className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
           )}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-900 dark:text-white font-mono truncate max-w-[220px] sm:max-w-[300px]">
+              <span className="text-xs font-semibold text-zinc-900 dark:text-stone-100 font-mono truncate max-w-[220px] sm:max-w-[300px]">
                 {fileName || 'study_material.txt'}
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/70 shrink-0">
+              <span className="px-1.5 py-0.5 rounded-none text-[10px] font-mono uppercase tracking-wider bg-[#FCFBF9] dark:bg-[#181816] text-[#D95D39] dark:text-[#E87A5A] border border-stone-300/80 dark:border-zinc-700 shrink-0">
                 {isPdfMaterial
-                  ? 'PDF Viewer'
+                  ? 'PDF VIEWER'
                   : isImageMaterial
-                  ? 'Image Canvas'
-                  : 'Source Reader'}
+                  ? 'IMAGE CANVAS'
+                  : 'SOURCE READER'}
               </span>
             </div>
             {sourceFile && (
-              <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                Local Blob · {(sourceFile.size / 1024).toFixed(1)} KB
+              <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                LOCAL BLOB · {(sourceFile.size / 1024).toFixed(1)} KB
               </p>
             )}
           </div>
@@ -170,17 +172,17 @@ export function SourceMaterialViewer({
         <div className="flex flex-wrap items-center gap-2">
           {(isPdfMaterial || isImageMaterial) && (
             <div
-              className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-[11px]"
+              className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220] text-[11px] font-mono"
               role="group"
               aria-label="Document rendering mode"
             >
               <button
                 type="button"
                 onClick={() => setViewerSubMode('native')}
-                className={`px-2 py-1 rounded-md font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-2.5 py-1 transition-colors cursor-pointer whitespace-nowrap ${
                   viewerSubMode === 'native'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
+                    ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                    : 'text-stone-600 dark:text-stone-400'
                 }`}
               >
                 {isPdfMaterial ? 'PDF Embed' : 'Image View'}
@@ -188,10 +190,10 @@ export function SourceMaterialViewer({
               <button
                 type="button"
                 onClick={() => setViewerSubMode('reader')}
-                className={`px-2 py-1 rounded-md font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`px-2.5 py-1 border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap ${
                   viewerSubMode === 'reader'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
+                    ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                    : 'text-stone-600 dark:text-stone-400'
                 }`}
               >
                 Text Reader
@@ -201,10 +203,10 @@ export function SourceMaterialViewer({
 
           {showNativePdf && sourceFileUrl && (
             <>
-              <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-xs">
+              <div className="flex items-center gap-1.5 bg-[#FCFBF9] dark:bg-[#181816] border border-stone-300/80 dark:border-zinc-700 rounded-md px-2.5 py-1 text-xs font-mono">
                 <label
                   htmlFor="pdf-jump-to-page"
-                  className="text-[11px] font-medium text-slate-600 dark:text-slate-400 whitespace-nowrap"
+                  className="text-[11px] text-stone-600 dark:text-stone-400 whitespace-nowrap"
                 >
                   Jump to Page:
                 </label>
@@ -218,9 +220,9 @@ export function SourceMaterialViewer({
                     const val = parseInt(e.target.value, 10);
                     setPageNum(Number.isNaN(val) || val < 1 ? 1 : val);
                   }}
-                  className="w-12 text-center font-mono text-xs font-semibold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-12 text-center font-mono text-xs font-semibold text-zinc-900 dark:text-stone-100 bg-[#F7F6F2] dark:bg-[#111110] border border-stone-300/80 dark:border-zinc-700 rounded-none px-1 py-0.5 focus:outline-none focus:border-[#D95D39]"
                 />
-                <span className="text-[11px] font-mono text-slate-400 tabular-nums">
+                <span className="text-[11px] font-mono text-stone-500 tabular-nums">
                   / {Math.max(1, pageCount)}
                 </span>
               </div>
@@ -229,7 +231,7 @@ export function SourceMaterialViewer({
                 href={sourceFileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono font-semibold bg-[#D95D39] hover:bg-[#C04E2C] text-white transition-colors whitespace-nowrap shrink-0"
               >
                 <span>Open in New Tab</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -242,18 +244,18 @@ export function SourceMaterialViewer({
               <button
                 type="button"
                 onClick={() => setImageZoom((z) => Math.max(50, z - 25))}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-md border border-stone-300/80 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] text-stone-700 dark:text-stone-300 hover:bg-[#EFECE6] cursor-pointer"
                 aria-label="Zoom out image"
               >
                 <ZoomOut className="w-3.5 h-3.5" />
               </button>
-              <span className="text-xs font-mono tabular-nums px-1.5 text-slate-700 dark:text-slate-300">
+              <span className="text-xs font-mono tabular-nums px-1.5 text-stone-700 dark:text-stone-300">
                 {imageZoom}%
               </span>
               <button
                 type="button"
                 onClick={() => setImageZoom((z) => Math.min(300, z + 25))}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-md border border-stone-300/80 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] text-stone-700 dark:text-stone-300 hover:bg-[#EFECE6] cursor-pointer"
                 aria-label="Zoom in image"
               >
                 <ZoomIn className="w-3.5 h-3.5" />
@@ -264,7 +266,7 @@ export function SourceMaterialViewer({
                   setImageZoom(100);
                   setPanOffset({ x: 0, y: 0 });
                 }}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-100 cursor-pointer"
+                className="p-1.5 rounded-md border border-stone-300/80 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] text-stone-700 dark:text-stone-300 hover:bg-[#EFECE6] cursor-pointer"
                 aria-label="Reset image zoom and pan"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -273,7 +275,7 @@ export function SourceMaterialViewer({
                 href={sourceFileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 whitespace-nowrap"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-mono font-semibold bg-[#D95D39] text-white whitespace-nowrap"
               >
                 <span>Open in New Tab</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -285,16 +287,16 @@ export function SourceMaterialViewer({
 
       {/* MODE 1: Embedded Native PDF Viewer */}
       {showNativePdf && sourceFileUrl ? (
-        <div className="p-3 bg-slate-100 dark:bg-slate-950 flex-1">
+        <div className="p-3 bg-[#EFECE6] dark:bg-[#111110] flex-1">
           <div
             className={`w-full ${
               compact ? 'h-[580px]' : 'h-[680px]'
-            } rounded-xl overflow-hidden bg-white dark:bg-slate-900`}
+            } rounded-md overflow-hidden bg-[#FCFBF9] dark:bg-[#181816]`}
           >
             <iframe
               key={`${sourceFileUrl}-page-${pageNum}`}
               src={pdfIframeSrc}
-              className="w-full h-full rounded-xl border border-slate-200 dark:border-slate-800"
+              className="w-full h-full rounded-md border border-stone-300/80 dark:border-zinc-800"
               title="Study Material PDF Viewer"
             />
           </div>
@@ -302,7 +304,7 @@ export function SourceMaterialViewer({
       ) : showNativeImage && sourceFileUrl ? (
         /* MODE 2: Zoomable & Pannable Study Image Viewer */
         <div
-          className={`relative overflow-hidden bg-slate-950 flex items-center justify-center select-none ${
+          className={`relative overflow-hidden bg-[#111110] flex items-center justify-center select-none ${
             compact ? 'h-[540px]' : 'h-[640px]'
           } ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
           onMouseDown={(e) => {
@@ -332,28 +334,28 @@ export function SourceMaterialViewer({
             }}
             className="max-w-full max-h-full object-contain transition-transform duration-75"
           />
-          <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-md bg-slate-900/80 border border-slate-700 text-[11px] font-mono text-slate-300">
-            Drag to pan · Zoom {imageZoom}%
+          <div className="absolute bottom-3 right-3 px-2.5 py-1 rounded-none bg-[#181816]/90 border border-zinc-700 text-[11px] font-mono text-stone-300">
+            DRAG TO PAN · ZOOM {imageZoom}%
           </div>
         </div>
       ) : (
         /* MODE 3: Distraction-Free Source Reader (.txt, .md, .docx, Pasted Text, or Text Fallback) */
         <div className="flex flex-col flex-1">
           {/* Reader Toolbar: Keyword Search + Typography Controls */}
-          <div className="px-4 py-2.5 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div className="px-4 py-2.5 bg-[#FCFBF9] dark:bg-[#181816] border-b border-stone-300/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3">
             {/* Live Keyword Search Bar */}
             <div className="relative flex-1 min-w-[200px]">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="search"
                 aria-label="Search keywords in source document"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search terms in source text..."
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 pl-8 pr-20 py-1.5 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] pl-8 pr-20 py-1.5 text-xs text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
               />
               {searchQuery.trim().length > 0 && (
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] font-mono font-semibold text-[#D95D39] dark:text-[#E87A5A]">
                   {totalKeywordMatches} {totalKeywordMatches === 1 ? 'match' : 'matches'}
                 </span>
               )}
@@ -362,7 +364,7 @@ export function SourceMaterialViewer({
             {/* Typography Controls: Font Family & Font Size */}
             <div className="flex items-center gap-2 shrink-0">
               <div
-                className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700 text-[11px]"
+                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220] text-[11px] font-mono"
                 role="group"
                 aria-label="Reader font family"
               >
@@ -371,10 +373,10 @@ export function SourceMaterialViewer({
                     key={fam}
                     type="button"
                     onClick={() => setFontFamily(fam)}
-                    className={`px-2 py-0.5 rounded font-medium capitalize transition-colors cursor-pointer ${
+                    className={`px-2 py-0.5 capitalize transition-colors cursor-pointer ${
                       fontFamily === fam
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                        : 'text-slate-600 dark:text-slate-400'
+                        ? 'bg-[#FCFBF9] dark:bg-[#181816] text-[#D95D39] dark:text-[#E87A5A] font-semibold'
+                        : 'text-stone-600 dark:text-stone-400'
                     }`}
                   >
                     {fam}
@@ -383,20 +385,20 @@ export function SourceMaterialViewer({
               </div>
 
               <div
-                className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700 text-[11px]"
+                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220] text-[11px] font-mono"
                 role="group"
                 aria-label="Reader font size"
               >
-                <Type className="w-3.5 h-3.5 text-slate-400 mx-1" />
+                <Type className="w-3.5 h-3.5 text-stone-500 mx-1" />
                 {(['sm', 'md', 'lg'] as const).map((sz) => (
                   <button
                     key={sz}
                     type="button"
                     onClick={() => setFontSize(sz)}
-                    className={`px-2 py-0.5 rounded font-mono uppercase transition-colors cursor-pointer ${
+                    className={`px-2 py-0.5 uppercase transition-colors cursor-pointer ${
                       fontSize === sz
-                        ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
-                        : 'text-slate-600 dark:text-slate-400'
+                        ? 'bg-[#FCFBF9] dark:bg-[#181816] text-[#D95D39] dark:text-[#E87A5A] font-semibold'
+                        : 'text-stone-600 dark:text-stone-400'
                     }`}
                   >
                     {sz}
@@ -410,7 +412,7 @@ export function SourceMaterialViewer({
           <div
             className={`p-5 space-y-4 overflow-y-auto ${
               compact ? 'max-h-[580px]' : 'max-h-[680px]'
-            } bg-white dark:bg-slate-900 ${readerFontClass}`}
+            } bg-[#FCFBF9] dark:bg-[#181816] ${readerFontClass}`}
           >
             {paragraphs.map((para, idx) => {
               const isHeading =
@@ -420,14 +422,14 @@ export function SourceMaterialViewer({
               return (
                 <article
                   key={idx}
-                  className={`group rounded-xl border p-4 transition-colors ${
+                  className={`group rounded-md border p-4 transition-colors ${
                     isHeading
-                      ? 'border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/25'
-                      : 'border-slate-200/70 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-950/40 hover:border-slate-300 dark:hover:border-slate-700'
+                      ? 'border-l-4 border-l-[#D95D39] border-stone-300/80 dark:border-zinc-800 bg-[#EFECE6]/50 dark:bg-[#222220]'
+                      : 'border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2]/70 dark:bg-[#111110]/70 hover:border-stone-400 dark:hover:border-zinc-700'
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 tabular-nums">
+                    <span className="text-[11px] font-mono font-semibold text-[#D95D39] dark:text-[#E87A5A] tabular-nums">
                       ¶ {String(idx + 1).padStart(2, '0')}
                     </span>
 
@@ -435,10 +437,9 @@ export function SourceMaterialViewer({
                       <button
                         type="button"
                         onClick={() => onAskTutorAboutParagraph(para)}
-                        className="inline-flex items-center gap-1 text-[11px] font-sans font-medium text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 text-[11px] font-mono uppercase tracking-wider text-stone-500 dark:text-stone-400 hover:text-[#D95D39] dark:hover:text-[#E87A5A] transition-colors cursor-pointer"
                       >
-                        <Sparkles className="w-3 h-3" />
-                        <span>Ask AI Tutor about ¶ {String(idx + 1).padStart(2, '0')}</span>
+                        <span>Ask Tutor // ¶ {String(idx + 1).padStart(2, '0')}</span>
                         <ArrowUpRight className="w-3 h-3" />
                       </button>
                     )}
@@ -447,8 +448,8 @@ export function SourceMaterialViewer({
                   <p
                     className={`${readerSizeClass} ${
                       isHeading
-                        ? 'font-bold text-slate-900 dark:text-white font-display'
-                        : 'text-slate-800 dark:text-slate-200'
+                        ? 'font-bold text-zinc-900 dark:text-stone-100 font-display'
+                        : 'text-zinc-800 dark:text-stone-200'
                     } whitespace-pre-wrap`}
                   >
                     {renderHighlightedText(para)}
@@ -459,13 +460,13 @@ export function SourceMaterialViewer({
           </div>
 
           {/* Reader Footer Status */}
-          <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400">
+          <div className="px-4 py-2.5 bg-[#EFECE6]/70 dark:bg-[#141413] border-t border-stone-300/80 dark:border-zinc-800 flex items-center justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400">
             <span className="flex items-center gap-1.5">
-              <FileCode2 className="w-3.5 h-3.5 text-indigo-500" />
-              {paragraphs.length} numbered {paragraphs.length === 1 ? 'section' : 'sections'}
+              <FileCode2 className="w-3.5 h-3.5 text-[#D95D39]" />
+              {paragraphs.length} NUMBERED {paragraphs.length === 1 ? 'SECTION' : 'SECTIONS'}
             </span>
             <span>
-              {(rawSourceText || '').trim().split(/\s+/).filter(Boolean).length} words total
+              {(rawSourceText || '').trim().split(/\s+/).filter(Boolean).length} WORDS TOTAL
             </span>
           </div>
         </div>
@@ -473,3 +474,4 @@ export function SourceMaterialViewer({
     </div>
   );
 }
+

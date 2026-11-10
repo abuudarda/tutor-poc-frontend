@@ -552,9 +552,9 @@ export default function MultimodalTutorApp() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      {/* Strict 3-Zone Top Bar Contract */}
-      <header className="flex items-center justify-between gap-8 px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+    <div className="min-h-screen flex flex-col bg-[#F7F6F2] dark:bg-[#111110] text-zinc-900 dark:text-stone-100">
+      {/* Strict 3-Zone Architectural Top Bar (h-14 / 3.5rem) */}
+      <header className="h-14 shrink-0 flex items-center justify-between gap-8 px-6 border-b border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]">
         {/* Zone 1: Single text element wordmark */}
         <a
           href="#top"
@@ -562,7 +562,7 @@ export default function MultimodalTutorApp() {
             e.preventDefault();
             setActiveView('studio');
           }}
-          className="text-lg font-bold tracking-tight text-slate-900 dark:text-white font-display whitespace-nowrap shrink-0"
+          className="text-base font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display whitespace-nowrap shrink-0"
         >
           Socratica Studio
         </a>
@@ -570,7 +570,7 @@ export default function MultimodalTutorApp() {
         {/* Zone 2: Concise single-line text navigation links */}
         <nav
           aria-label="Primary Workspace Navigation"
-          className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400"
+          className="hidden md:flex items-center gap-6 text-xs font-mono uppercase tracking-wider text-stone-600 dark:text-stone-400"
         >
           <a
             href="#setup-studio"
@@ -578,13 +578,13 @@ export default function MultimodalTutorApp() {
               e.preventDefault();
               setActiveView('studio');
             }}
-            className={`hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 ${
+            className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
               activeView === 'studio'
-                ? 'text-indigo-600 dark:text-indigo-400 underline underline-offset-8'
+                ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
                 : ''
             }`}
           >
-            Setup Studio
+            01 // Setup Studio
           </a>
           <a
             href="#interactive-classroom"
@@ -592,13 +592,13 @@ export default function MultimodalTutorApp() {
               e.preventDefault();
               setActiveView('classroom');
             }}
-            className={`hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0 ${
+            className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
               activeView === 'classroom'
-                ? 'text-indigo-600 dark:text-indigo-400 underline underline-offset-8'
+                ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
                 : ''
             }`}
           >
-            Classroom
+            02 // Classroom
           </a>
         </nav>
 
@@ -609,24 +609,24 @@ export default function MultimodalTutorApp() {
               id="nav-interactive-classroom"
               type="button"
               onClick={() => setActiveView('classroom')}
-              className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="px-3.5 py-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] border border-[#D95D39] rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              Open Classroom
+              Open Classroom →
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setActiveView('studio')}
-              className="px-4 py-2 text-xs font-semibold text-slate-900 dark:text-white bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              className="px-3.5 py-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-zinc-900 dark:text-stone-100 bg-[#EFECE6] dark:bg-[#222220] hover:bg-stone-300/70 dark:hover:bg-zinc-700 border border-stone-300/80 dark:border-zinc-700 rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
-              Configure Lesson
+              ← Configure Lesson
             </button>
           )}
         </div>
       </header>
 
       {/* Main Workspace Container */}
-      <main className="flex-1 pb-20">
+      <main className={activeView === 'classroom' ? 'flex-1 overflow-hidden' : 'flex-1 pb-16'}>
         {activeView === 'studio' ? (
           <SetupStudio
             fileName={fileName}

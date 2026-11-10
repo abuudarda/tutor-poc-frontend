@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body
-        className="bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 antialiased selection:bg-indigo-500/20 selection:text-indigo-600 dark:selection:text-indigo-300"
+        className="bg-[#F7F6F2] text-zinc-900 dark:bg-[#111110] dark:text-stone-100 antialiased selection:bg-[#D95D39]/20 selection:text-[#D95D39] dark:selection:text-[#E87A5A]"
         suppressHydrationWarning
       >
         {children}
