@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   EducationLevel,
   SimplicityLevel,
@@ -15,6 +15,7 @@ import {
   DEFAULT_INCOMING_LESSON,
   PRESET_STUDY_MATERIALS,
   buildOutgoingPayload,
+  buildSynthesizedPdfBytes,
   estimateFileMetadata,
   normalizeBaseUrl,
   synthesizeAdaptiveLessonFromPayload,
@@ -48,6 +49,51 @@ export default function MultimodalTutorApp() {
   const [explicitReadingMinutes, setExplicitReadingMinutes] = useState<number | undefined>(
     undefined
   );
+
+  // Preserved Uploaded File & Browser Object URL for View 2 Classroom Viewer
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [sourceFileUrl, setSourceFileUrl] = useState<string | null>(null);
+  const activeObjectUrlRef = useRef<string | null>(null);
+
+  const replaceSourceFileAndBlobUrl = useCallback((nextFile: File | null) => {
+    if (activeObjectUrlRef.current) {
+      URL.revokeObjectURL(activeObjectUrlRef.current);
+      activeObjectUrlRef.current = null;
+    }
+    setSourceFile(nextFile);
+    if (nextFile && typeof window !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const nextUrl = URL.createObjectURL(nextFile);
+      activeObjectUrlRef.current = nextUrl;
+      setSourceFileUrl(nextUrl);
+    } else {
+      setSourceFileUrl(null);
+    }
+  }, []);
+
+  // Initialize a synthesized PDF Blob URL for the default PDF preset so View 2 PDF Viewer works out of the box, and revoke on unmount
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof URL.createObjectURL !== 'function') return;
+    const initTimer = window.setTimeout(() => {
+      if (!activeObjectUrlRef.current) {
+        const pdfBytes = buildSynthesizedPdfBytes(
+          DEFAULT_INCOMING_LESSON.chapter_title,
+          DEFAULT_OUTGOING_REQUEST.source_material.raw_text_extracted
+        );
+        const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        activeObjectUrlRef.current = url;
+        setSourceFileUrl(url);
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(initTimer);
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Pedagogical Configuration State
   const [educationLevel, setEducationLevel] = useState<EducationLevel>(
@@ -221,6 +267,17 @@ export default function MultimodalTutorApp() {
     setIncomingLesson(found.lesson);
     setActiveModuleIndex(0);
     setMasteredModuleIds([]);
+
+    // If preset is a PDF, create a valid PDF Blob URL so the embedded PDF viewer in View 2 renders it natively
+    if (found.contentType === 'application/pdf' && typeof window !== 'undefined') {
+      const pdfBytes = buildSynthesizedPdfBytes(found.lesson.chapter_title, found.rawText);
+      const synthFile = new File([pdfBytes.buffer as ArrayBuffer], found.fileName, {
+        type: 'application/pdf',
+      });
+      replaceSourceFileAndBlobUrl(synthFile);
+    } else {
+      replaceSourceFileAndBlobUrl(null);
+    }
   };
 
   const handleUpdateMaterial = (
@@ -240,6 +297,8 @@ export default function MultimodalTutorApp() {
 
   // Endpoint A: POST ${baseUrl}/api/v1/parse-document with multipart/form-data
   const handleUploadFileToBackend = async (file: File) => {
+    // Immediately store the uploaded File and create a browser object URL via URL.createObjectURL(file)
+    replaceSourceFileAndBlobUrl(file);
     setParseError(null);
     setIsParsingDocument(true);
 
@@ -593,6 +652,8 @@ export default function MultimodalTutorApp() {
             contentType={contentType}
             rawText={rawText}
             fileMeta={fileMeta}
+            sourceFile={sourceFile}
+            sourceFileUrl={sourceFileUrl}
             educationLevel={educationLevel}
             simplicityLevel={simplicityLevel}
             methodology={methodology}
@@ -623,6 +684,12 @@ export default function MultimodalTutorApp() {
             sessionId={sessionId}
             lesson={incomingLesson}
             tutorConfig={outgoingPayload.tutor_config}
+            sourceFile={sourceFile}
+            sourceFileUrl={sourceFileUrl}
+            sourceFileName={fileName}
+            sourceContentType={contentType}
+            sourcePageCount={fileMeta.pageCount}
+            rawSourceText={rawText}
             activeModuleIndex={activeModuleIndex}
             masteredModuleIds={masteredModuleIds}
             mockBackendMode={mockBackendMode}

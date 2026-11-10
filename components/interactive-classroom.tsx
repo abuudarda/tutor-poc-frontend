@@ -17,6 +17,9 @@ import {
   BookOpen,
   Loader2,
   Radio,
+  Columns2,
+  FileText,
+  LayoutDashboard,
 } from 'lucide-react';
 import {
   IncomingLessonResponse,
@@ -26,15 +29,19 @@ import {
   QuickActionType,
   ChatHistoryTurn,
   EndpointKey,
+  SpeechVoiceInput,
   buildEvaluateCheckpointPayload,
   buildTutorChatPayload,
   evaluateUnderstandingResponse,
   extractTextFromSseChunk,
   generateContextualTutorReply,
+  getPersonaProsody,
   normalizeBaseUrl,
-  PERSONA_OPTIONS,
+  rankEnglishVoicesForPersona,
+  splitIntoSpeechSentences,
 } from '@/lib/tutor-contracts';
 import { ConceptSimulationDiagram } from './concept-simulation-diagram';
+import { SourceMaterialViewer } from './source-material-viewer';
 
 export interface TranscriptMessage {
   id: string;
@@ -48,6 +55,12 @@ interface InteractiveClassroomProps {
   sessionId: string;
   lesson: IncomingLessonResponse;
   tutorConfig: TutorConfigPayload;
+  sourceFile: File | null;
+  sourceFileUrl: string | null;
+  sourceFileName: string;
+  sourceContentType: string;
+  sourcePageCount: number;
+  rawSourceText: string;
   activeModuleIndex: number;
   masteredModuleIds: string[];
   mockBackendMode: boolean;
@@ -71,6 +84,12 @@ export function InteractiveClassroom({
   sessionId,
   lesson,
   tutorConfig,
+  sourceFile,
+  sourceFileUrl,
+  sourceFileName,
+  sourceContentType,
+  sourcePageCount,
+  rawSourceText,
   activeModuleIndex,
   masteredModuleIds,
   mockBackendMode,
@@ -86,12 +105,19 @@ export function InteractiveClassroom({
   const activeModule: LessonModule =
     lesson.modules[activeModuleIndex] || lesson.modules[0];
 
+  // Workspace View Mode: 'whiteboard' | 'split' (PDF + Board) | 'document' (Source Document)
+  const [workspaceLayout, setWorkspaceLayout] = useState<
+    'whiteboard' | 'split' | 'document'
+  >('whiteboard');
+
   // Voice & TTS State
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.25 | 1.5>(1);
   const [activeKeyPointIndex, setActiveKeyPointIndex] = useState<number | null>(null);
+  const [browserVoices, setBrowserVoices] = useState<SpeechVoiceInput[]>([]);
+  const [userSelectedVoiceURI, setUserSelectedVoiceURI] = useState<string>('');
 
   // Microphone / SpeechRecognition State
   const [isListening, setIsListening] = useState(false);
@@ -130,6 +156,8 @@ export function InteractiveClassroom({
   // Refs for timers and Web Speech
   const keyPointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fallbackSpeechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechSessionIdRef = useRef<number>(0);
+  const nativeVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const recognitionRef = useRef<any>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const msgSeqRef = useRef<number>(1);
@@ -139,7 +167,13 @@ export function InteractiveClassroom({
   const isCurrentMastered = masteredModuleIds.includes(activeModule.module_id);
   const cleanBase = normalizeBaseUrl(backendBaseUrl);
 
+  // Ranked English voices according to strict neural priority hierarchy & persona affinity
+  const rankedVoices = rankEnglishVoicesForPersona(browserVoices, tutorConfig.persona);
+  const activeVoiceOption =
+    rankedVoices.find((v) => v.voiceURI === userSelectedVoiceURI) || rankedVoices[0];
+
   const stopSpeechInternal = () => {
+    speechSessionIdRef.current += 1;
     if (keyPointTimerRef.current) {
       clearInterval(keyPointTimerRef.current);
       keyPointTimerRef.current = null;
@@ -157,9 +191,14 @@ export function InteractiveClassroom({
 
   const speakTextAloud = (
     textToSpeak: string,
-    options?: { cycleKeyPoints?: boolean; fixedPointIndex?: number | null }
+    options?: {
+      cycleKeyPoints?: boolean;
+      fixedPointIndex?: number | null;
+      overrideVoiceURI?: string;
+    }
   ) => {
     stopSpeechInternal();
+    const currentSessionId = speechSessionIdRef.current;
 
     const pointCount = activeModule.key_points.length;
     if (options?.fixedPointIndex !== undefined) {
@@ -176,13 +215,16 @@ export function InteractiveClassroom({
     setIsSpeaking(true);
     setIsPaused(false);
 
+    // Split into individual sentences to prevent Chrome's ~15-second cloud TTS cutoff bug
+    const sentences = splitIntoSpeechSentences(textToSpeak);
     const words = textToSpeak.trim().split(/\s+/).length;
     const estDurationMs = Math.min(
-      14000,
-      Math.max(2800, Math.round((words / (2.6 * playbackSpeed)) * 1000))
+      28000,
+      Math.max(2800, Math.round((words / (2.5 * playbackSpeed)) * 1000))
     );
 
     fallbackSpeechTimerRef.current = setTimeout(() => {
+      if (speechSessionIdRef.current !== currentSessionId) return;
       if (keyPointTimerRef.current) {
         clearInterval(keyPointTimerRef.current);
         keyPointTimerRef.current = null;
@@ -191,37 +233,118 @@ export function InteractiveClassroom({
       setIsPaused(false);
     }, estDurationMs);
 
-    if (!isMuted && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+    if (
+      !isMuted &&
+      sentences.length > 0 &&
+      typeof window !== 'undefined' &&
+      'speechSynthesis' in window
+    ) {
       try {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(textToSpeak);
-        const personaCfg = PERSONA_OPTIONS.find((p) => p.value === tutorConfig.persona);
-        utterance.rate = Math.min(2.0, playbackSpeed * (personaCfg?.voiceRateMod || 1.0));
-        utterance.pitch = personaCfg?.voicePitchMod || 1.0;
 
-        utterance.onend = () => {
-          if (keyPointTimerRef.current) {
-            clearInterval(keyPointTimerRef.current);
-            keyPointTimerRef.current = null;
+        const targetVoiceURI =
+          options?.overrideVoiceURI || activeVoiceOption?.voiceURI || '';
+        const liveSystemVoices =
+          nativeVoicesRef.current.length > 0
+            ? nativeVoicesRef.current
+            : window.speechSynthesis.getVoices();
+
+        const matchedNativeVoice =
+          liveSystemVoices.find(
+            (v) => v.voiceURI === targetVoiceURI || v.name === targetVoiceURI
+          ) ||
+          liveSystemVoices.find((v) =>
+            rankedVoices[0]
+              ? v.voiceURI === rankedVoices[0].voiceURI ||
+                v.name === rankedVoices[0].name
+              : false
+          );
+
+        const prosody = getPersonaProsody(tutorConfig.persona);
+        const effectiveRate = Math.min(2.0, playbackSpeed * prosody.rate);
+        const effectivePitch = prosody.pitch;
+
+        // Sequential sentence queue so long explanations never hit Chrome's 15s cutoff
+        const speakSentenceAtIndex = (idx: number) => {
+          if (speechSessionIdRef.current !== currentSessionId) return;
+          if (idx >= sentences.length) {
+            if (keyPointTimerRef.current) {
+              clearInterval(keyPointTimerRef.current);
+              keyPointTimerRef.current = null;
+            }
+            if (fallbackSpeechTimerRef.current) {
+              clearTimeout(fallbackSpeechTimerRef.current);
+              fallbackSpeechTimerRef.current = null;
+            }
+            setIsSpeaking(false);
+            setIsPaused(false);
+            return;
           }
-          if (fallbackSpeechTimerRef.current) {
-            clearTimeout(fallbackSpeechTimerRef.current);
-            fallbackSpeechTimerRef.current = null;
+
+          const utterance = new SpeechSynthesisUtterance(sentences[idx]);
+          if (matchedNativeVoice) {
+            utterance.voice = matchedNativeVoice;
+            utterance.lang = matchedNativeVoice.lang;
+          } else if (activeVoiceOption?.lang) {
+            utterance.lang = activeVoiceOption.lang;
           }
-          setIsSpeaking(false);
-          setIsPaused(false);
+          utterance.rate = effectiveRate;
+          utterance.pitch = effectivePitch;
+
+          utterance.onend = () => {
+            if (speechSessionIdRef.current !== currentSessionId) return;
+            speakSentenceAtIndex(idx + 1);
+          };
+
+          utterance.onerror = () => {
+            if (speechSessionIdRef.current !== currentSessionId) return;
+            speakSentenceAtIndex(idx + 1);
+          };
+
+          window.speechSynthesis.speak(utterance);
         };
 
-        window.speechSynthesis.speak(utterance);
+        speakSentenceAtIndex(0);
       } catch {
         // Fallback timer handles visual completion
       }
     }
   };
 
+  // Load voices from window.speechSynthesis.getVoices() and subscribe to onvoiceschanged
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const loadVoices = () => {
+      const rawVoices = window.speechSynthesis.getVoices() || [];
+      nativeVoicesRef.current = rawVoices;
+      if (rawVoices.length > 0) {
+        setBrowserVoices(
+          rawVoices.map((v) => ({
+            voiceURI: v.voiceURI || v.name,
+            name: v.name,
+            lang: v.lang,
+            localService: v.localService,
+          }))
+        );
+      }
+    };
+
+    const initTimer = window.setTimeout(loadVoices, 0);
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    return () => {
+      window.clearTimeout(initTimer);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
+
   // Clear timers on unmount
   useEffect(() => {
     return () => {
+      speechSessionIdRef.current += 1;
       if (keyPointTimerRef.current) clearInterval(keyPointTimerRef.current);
       if (fallbackSpeechTimerRef.current) clearTimeout(fallbackSpeechTimerRef.current);
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -816,9 +939,12 @@ export function InteractiveClassroom({
             </h1>
           </div>
 
-          {/* Mastery Progress Bar */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-36 sm:w-44 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+          {/* Mastery Progress Bar & Dynamic Module Counter Badge */}
+          <div className="flex flex-wrap items-center gap-3 shrink-0">
+            <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-xs font-mono font-semibold tabular-nums text-indigo-700 dark:text-indigo-300">
+              Module {activeModuleIndex + 1} of {lesson.modules.length}
+            </span>
+            <div className="w-32 sm:w-40 h-2.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
               <div
                 className="h-full bg-emerald-500 transition-all duration-300"
                 style={{ width: `${masteryPercentage}%` }}
@@ -830,15 +956,16 @@ export function InteractiveClassroom({
           </div>
         </div>
 
-        {/* Module Stepper Navigation */}
+        {/* Dynamic Horizontally Scrollable Module Stepper (Scales from 1 to 12+ Modules) */}
         <div
-          className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4"
+          className="flex items-stretch gap-3 pt-4 overflow-x-auto no-scrollbar pb-1"
           role="tablist"
           aria-label="Lesson Concept Modules"
         >
           {lesson.modules.map((mod, idx) => {
             const isActive = idx === activeModuleIndex;
             const isMastered = masteredModuleIds.includes(mod.module_id);
+            const paddedNum = String(idx + 1).padStart(2, '0');
             return (
               <button
                 key={mod.module_id}
@@ -846,7 +973,7 @@ export function InteractiveClassroom({
                 role="tab"
                 aria-selected={isActive}
                 onClick={() => handleSwitchModule(idx)}
-                className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-left transition-all cursor-pointer min-w-[220px] sm:min-w-[248px] flex-1 shrink-0 ${
                   isActive
                     ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/50 text-slate-900 dark:text-white ring-1 ring-indigo-600/20'
                     : isMastered
@@ -855,9 +982,22 @@ export function InteractiveClassroom({
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                    0{idx + 1}. {mod.module_id}
-                  </p>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span
+                      className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold tabular-nums ${
+                        isActive
+                          ? 'bg-indigo-600 text-white'
+                          : isMastered
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {paddedNum}
+                    </span>
+                    <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                      {mod.module_id}
+                    </span>
+                  </div>
                   <p className="text-xs font-semibold truncate">{mod.title}</p>
                 </div>
                 <div className="shrink-0">
@@ -880,32 +1020,142 @@ export function InteractiveClassroom({
         </div>
       </div>
 
-      {/* Split-Screen Interactive Workspace: 70% Left/Center Whiteboard + 30% Right AI Tutor Comms */}
+      {/* Split-Screen Interactive Workspace: 70% Left/Center Workspace + 30% Right AI Tutor Comms */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* LEFT/CENTER PANEL: The Dynamic Lesson Whiteboard (70% width -> 8 of 12 cols on lg) */}
-        <div className="lg:col-span-8 space-y-6">
-          {/* Active Concept Canvas Card */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-6">
-            {/* Module Title & Speak Narration Trigger */}
-            <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
-              <div>
-                <p className="text-xs font-mono text-indigo-600 dark:text-indigo-400">
-                  Module 0{activeModuleIndex + 1} of 0{lesson.modules.length} · Active Concept Canvas
-                </p>
-                <h2 className="text-2xl font-bold text-slate-900 dark:text-white font-display mt-0.5">
-                  {activeModule.title}
-                </h2>
-              </div>
+        {/* LEFT/CENTER PANEL: Dynamic Whiteboard & Built-In Source Document Viewer (70% width -> 8 of 12 cols on lg) */}
+        <div className="lg:col-span-8 space-y-5">
+          {/* 3-Way Workspace Layout Switcher Bar */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                Classroom Workspace Mode:
+              </span>
+              <span className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
+                {sourceFileName || 'study_notes.txt'}
+              </span>
+            </div>
+
+            <div
+              className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/70 dark:border-slate-700"
+              role="tablist"
+              aria-label="Classroom Workspace Layout Switcher"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workspaceLayout === 'whiteboard'}
+                onClick={() => setWorkspaceLayout('whiteboard')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  workspaceLayout === 'whiteboard'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span>Whiteboard</span>
+              </button>
 
               <button
                 type="button"
-                onClick={handleReplayExplanation}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                role="tab"
+                aria-selected={workspaceLayout === 'split'}
+                onClick={() => setWorkspaceLayout('split')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  workspaceLayout === 'split'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
               >
-                <Volume2 className="w-3.5 h-3.5" />
-                <span>{isSpeaking ? 'Restart Voice Narration' : 'Narrate Concept Aloud'}</span>
+                <Columns2 className="w-3.5 h-3.5" />
+                <span>Split View (PDF + Board)</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={workspaceLayout === 'document'}
+                onClick={() => setWorkspaceLayout('document')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  workspaceLayout === 'document'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Source Document</span>
               </button>
             </div>
+          </div>
+
+          {workspaceLayout === 'document' ? (
+            /* Full-Width Source Document Viewer Mode */
+            <SourceMaterialViewer
+              sourceFile={sourceFile}
+              sourceFileUrl={sourceFileUrl}
+              fileName={sourceFileName}
+              contentType={sourceContentType}
+              pageCount={sourcePageCount}
+              rawSourceText={rawSourceText}
+              onAskTutorAboutParagraph={(snippet) => {
+                void handleSendChatMessage(
+                  `Can you explain this passage from my study material: "${snippet.slice(0, 220)}..."`,
+                  'freeform'
+                );
+              }}
+            />
+          ) : (
+            /* Whiteboard or Side-by-Side Split View (PDF + Board) */
+            <div
+              className={
+                workspaceLayout === 'split'
+                  ? 'grid grid-cols-1 xl:grid-cols-2 gap-5 items-start'
+                  : 'space-y-6'
+              }
+            >
+              {workspaceLayout === 'split' && (
+                <div className="xl:sticky xl:top-6">
+                  <SourceMaterialViewer
+                    sourceFile={sourceFile}
+                    sourceFileUrl={sourceFileUrl}
+                    fileName={sourceFileName}
+                    contentType={sourceContentType}
+                    pageCount={sourcePageCount}
+                    rawSourceText={rawSourceText}
+                    compact
+                    onAskTutorAboutParagraph={(snippet) => {
+                      void handleSendChatMessage(
+                        `Can you explain this passage from my study material: "${snippet.slice(0, 220)}..."`,
+                        'freeform'
+                      );
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {/* Active Concept Canvas Card */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-6">
+                  {/* Module Title & Speak Narration Trigger */}
+                  <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
+                    <div>
+                      <p className="text-xs font-mono text-indigo-600 dark:text-indigo-400">
+                        Module {String(activeModuleIndex + 1).padStart(2, '0')} of{' '}
+                        {String(lesson.modules.length).padStart(2, '0')} · Active Concept Canvas
+                      </p>
+                      <h2 className="text-2xl font-bold text-slate-900 dark:text-white font-display mt-0.5">
+                        {activeModule.title}
+                      </h2>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleReplayExplanation}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                    >
+                      <Volume2 className="w-3.5 h-3.5" />
+                      <span>{isSpeaking ? 'Restart Voice Narration' : 'Narrate Concept Aloud'}</span>
+                    </button>
+                  </div>
 
             {/* 1. The Big Idea (TL;DR) Callout Box */}
             <div className="rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/30 p-5">
@@ -1283,6 +1533,9 @@ export function InteractiveClassroom({
               </div>
             )}
           </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* RIGHT PANEL: Multimodal AI Tutor & Live Comms (30% width -> 4 of 12 cols on lg) */}
@@ -1382,8 +1635,8 @@ export function InteractiveClassroom({
                 onClick={() => {
                   const nextMute = !isMuted;
                   setIsMuted(nextMute);
-                  if (nextMute && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                    window.speechSynthesis.cancel();
+                  if (nextMute) {
+                    stopSpeechInternal();
                   }
                 }}
                 className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
@@ -1400,6 +1653,76 @@ export function InteractiveClassroom({
                   </>
                 )}
               </button>
+            </div>
+
+            {/* Live Neural Voice Picker Dropdown (Badging Natural & Google voices as HD) */}
+            <div className="pt-2 border-t border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <label
+                  htmlFor="tutor-voice-picker"
+                  className="font-mono text-slate-300 flex items-center gap-1.5"
+                >
+                  <span>Neural Voice Engine</span>
+                  {activeVoiceOption?.isHd && (
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40 text-[10px] font-mono font-bold text-indigo-300">
+                      HD
+                    </span>
+                  )}
+                </label>
+                <span className="font-mono text-slate-400 tabular-nums">
+                  {getPersonaProsody(tutorConfig.persona).rate}x · Pitch{' '}
+                  {getPersonaProsody(tutorConfig.persona).pitch}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <select
+                  id="tutor-voice-picker"
+                  aria-label="Select Tutor TTS Voice"
+                  value={activeVoiceOption?.voiceURI || ''}
+                  onChange={(e) => {
+                    const nextURI = e.target.value;
+                    setUserSelectedVoiceURI(nextURI);
+                    const picked = rankedVoices.find((v) => v.voiceURI === nextURI);
+                    const cleanLabel = picked
+                      ? picked.name.replace(/\s*-\s*English.*$/i, '').trim()
+                      : 'your selected neural voice';
+                    speakTextAloud(
+                      `Hi there! I'm now speaking with ${cleanLabel}. Let's explore ${activeModule.title} together.`,
+                      { fixedPointIndex: null, overrideVoiceURI: nextURI }
+                    );
+                  }}
+                  className="flex-1 min-w-0 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 font-sans focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  {rankedVoices.map((voice) => (
+                    <option
+                      key={voice.voiceURI}
+                      value={voice.voiceURI}
+                      className="bg-slate-900 text-slate-100"
+                    >
+                      {voice.displayLabel}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentURI = activeVoiceOption?.voiceURI || '';
+                    const cleanLabel = activeVoiceOption
+                      ? activeVoiceOption.name.replace(/\s*-\s*English.*$/i, '').trim()
+                      : 'your neural tutor voice';
+                    speakTextAloud(
+                      `Voice preview active for ${cleanLabel}. Ready to continue ${activeModule.title}.`,
+                      { fixedPointIndex: null, overrideVoiceURI: currentURI }
+                    );
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono font-semibold text-indigo-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                  title="Preview selected voice aloud"
+                >
+                  Preview
+                </button>
+              </div>
             </div>
 
             {/* Endpoint E Toggle: Stream Tutor Replies (SSE) */}

@@ -247,14 +247,14 @@ export const PERSONA_OPTIONS: {
   {
     value: 'warm_encouraging',
     label: 'Warm & Encouraging',
-    voiceRateMod: 0.98,
-    voicePitchMod: 1.04,
+    voiceRateMod: 1.0,
+    voicePitchMod: 1.02,
   },
   {
     value: 'crisp_academic',
     label: 'Crisp & Academic',
     voiceRateMod: 1.03,
-    voicePitchMod: 0.96,
+    voicePitchMod: 0.98,
   },
   {
     value: 'casual_peer',
@@ -459,6 +459,184 @@ When vector dimension d_k is large, dot products grow large in magnitude, pushin
               'What happens to the softmax probabilities and training gradients if we forget to divide by the square root of d_k?',
             expected_concepts: ['saturate', 'vanish', 'extreme', 'sharp', 'zero gradient', 'peaked'],
             hint: 'Think about what happens to softmax when one input logit is 500 and another is 10.',
+          },
+        },
+      ],
+    },
+  },
+  {
+    id: 'rl_policy_gradients',
+    label: 'Ch 12: Deep RL & Policy Gradients (6 Modules)',
+    fileName: 'chapter_12_reinforcement_learning.pdf',
+    contentType: 'application/pdf',
+    rawText: `Chapter 12: Deep Reinforcement Learning, Markov Decision Processes & Policy Gradients
+
+1. The Markov Decision Process (MDP) Tuple
+Reinforcement Learning formalizes sequential decision-making through a Markov Decision Process defined by the tuple (S, A, P, R, gamma). At each discrete timestep t, the agent observes state s_t in S, selects action a_t in A according to policy pi(a|s), receives scalar reward r_t, and transitions to state s_{t+1} governed by environment dynamics P(s'|s, a).
+
+2. Discounted Return & The Horizon Trade-off
+The agent seeks to maximize expected cumulative discounted return G_t = sum_{k=0}^{infinity} gamma^k * r_{t+k+1}. The discount factor gamma in [0, 1) controls temporal myopia: gamma near 0 makes the agent greedy for immediate rewards, while gamma near 1 prioritizes long-term strategic outcomes.
+
+3. Bellman Optimality & Value Iteration
+The state-value function V^pi(s) and action-value function Q^pi(s, a) satisfy recursive Bellman equations. Instead of summing over infinite trajectories, Bellman decomposes value into immediate reward plus the discounted value of the successor state: Q(s, a) = r + gamma * max_{a'} Q(s', a').
+
+4. Policy Gradient Theorem (REINFORCE)
+Value-based methods struggle with continuous or high-dimensional action spaces. Policy Gradient methods parameterize pi_theta(a|s) directly and ascend the expected return gradient: grad_theta J(theta) = E[ grad_theta log pi_theta(a|s) * G_t ]. Actions that yield high return have their log-probability pushed up.
+
+5. Variance Reduction via Advantage Baselines (Actor-Critic)
+Raw Monte Carlo returns G_t exhibit high variance across episodes, destabilizing policy updates. Subtracting a state-dependent baseline V(s) yields the Advantage function A(s, a) = Q(s, a) - V(s), measuring how much better an action performed relative to the state average.
+
+6. Clipped Surrogate Objective (Proximal Policy Optimization)
+Large policy updates can collapse performance irreversibly if the new policy strays too far from the data-collection policy. PPO constrains the probability ratio r_t(theta) = pi_theta(a|s) / pi_{theta_old}(a|s) within [1 - epsilon, 1 + epsilon], guaranteeing monotonic trust-region improvement.`,
+    lesson: {
+      lesson_id: 'lesson-003',
+      chapter_title: 'Deep Reinforcement Learning & Policy Gradient Methods',
+      estimated_duration_minutes: 30,
+      welcome_spoken_intro:
+        'Welcome! Because this is a comprehensive six-section chapter on Deep Reinforcement Learning, we have broken it into 6 focused concept modules—from Markov Decision Processes all the way to PPO trust regions.',
+      modules: [
+        {
+          module_id: 'mod_1',
+          title: 'The Markov Decision Process (MDP) Loop',
+          core_concept:
+            'An MDP models sequential decision-making where future transitions depend only on the current state and chosen action.',
+          spoken_narration:
+            'Imagine training a puppy with treats. The puppy looks at its current situation—that is the State. It tries a behavior—that is the Action. If it sits politely, you hand over a treat—the Reward—and the room moves to a new State.',
+          visual_analogy: {
+            target_concept: 'State-Action-Reward Transition (S, A, P, R)',
+            everyday_parallel:
+              'Playing chess where only the current board arrangement matters for your next move, not the order of moves that got you there.',
+          },
+          key_points: [
+            'Markov Property states that P(s_{t+1} | s_t, a_t) is independent of earlier history.',
+            'Policy pi(a|s) maps states to probability distributions over actions.',
+            'Environment dynamics P(s\'|s,a) govern state transitions.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'In your own words, what does it mean for a state to satisfy the Markov property?',
+            expected_concepts: ['current state', 'history', 'future', 'independent', 'memoryless'],
+            hint: 'Think about whether knowing how chess pieces reached their current squares changes the legal moves available right now.',
+          },
+        },
+        {
+          module_id: 'mod_2',
+          title: 'Discounted Return & Temporal Horizon (γ)',
+          core_concept:
+            'The discount factor gamma exponentially weighs near-term rewards more heavily than distant uncertain rewards.',
+          spoken_narration:
+            'Would you rather receive $100 today or $100 ten years from now? In reinforcement learning, the discount factor gamma acts like an impatience knob between 0 and 1.',
+          visual_analogy: {
+            target_concept: 'Discount Factor γ in Cumulative Return G_t',
+            everyday_parallel:
+              'Financial time-value of money—a dollar today is worth more than a promised dollar far in the future.',
+          },
+          key_points: [
+            'G_t = r_{t+1} + γ r_{t+2} + γ^2 r_{t+3} + ... keeps infinite-horizon sums finite.',
+            'γ = 0 creates a purely myopic agent that only cares about the next step.',
+            'γ → 0.99 encourages long-term planning and delayed gratification.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'How does an agent behave if we set the discount factor gamma to 0 versus 0.99?',
+            expected_concepts: ['immediate', 'short-sighted', 'long-term', 'future', 'greedy'],
+            hint: 'Consider how much weight future steps receive when multiplied by 0 versus 0.99.',
+          },
+        },
+        {
+          module_id: 'mod_3',
+          title: 'Bellman Recursion & Dynamic Bootstrapping',
+          core_concept:
+            'Bellman equations decompose long-term value into immediate reward plus the discounted value of the next state.',
+          spoken_narration:
+            'Instead of driving every possible highway route from New York to Los Angeles from scratch, Bellman says: the fastest time from New York to LA is the drive time to Chicago plus our already-known best time from Chicago to LA.',
+          visual_analogy: {
+            target_concept: 'Bellman Expectation & Optimality Backup',
+            everyday_parallel:
+              'GPS navigation reusing precomputed travel times from intermediate cities instead of re-simulating the entire continent.',
+          },
+          key_points: [
+            'Q(s, a) = r + γ max_{a\'} Q(s\', a\') enables one-step temporal difference updates.',
+            'Bootstrapping updates an estimate using another estimate.',
+            'Eliminates the need to wait until the end of an episode to learn.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'Why does Bellman bootstrapping let an agent learn faster than waiting for the final outcome of an entire episode?',
+            expected_concepts: ['immediate', 'next state', 'reuse', 'estimate', 'bootstrap'],
+            hint: 'Think about updating your travel estimate as soon as you hit traffic in the first city.',
+          },
+        },
+        {
+          module_id: 'mod_4',
+          title: 'Policy Gradients & Log-Probability Reinforcement',
+          core_concept:
+            'REINFORCE directly adjusts policy parameters to increase the log-probability of actions that produced high returns.',
+          spoken_narration:
+            'When a robot arm controls continuous joint torques, we cannot list every possible action in a Q-table. Instead, Policy Gradients nudge the neural network weights directly: if a trajectory scored well, make those actions more likely next time.',
+          visual_analogy: {
+            target_concept: 'Log-Derivative Trick (∇_θ log π_θ(a|s) · G_t)',
+            everyday_parallel:
+              'Practicing basketball free throws—repeating the muscle release angle that swished through the hoop.',
+          },
+          key_points: [
+            'Handles continuous action spaces naturally without action maximization.',
+            'Can learn stochastic policies needed in partially observable games.',
+            'Gradient scales the log-likelihood of chosen action by episode return G_t.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'Why are Policy Gradient methods preferred over Q-learning when controlling a robot with continuous motor torques?',
+            expected_concepts: ['continuous', 'infinite actions', 'max', 'direct', 'stochastic'],
+            hint: 'Think about how hard it is to compute max_a Q(s,a) when "a" is a real-valued vector.',
+          },
+        },
+        {
+          module_id: 'mod_5',
+          title: 'Actor-Critic & Advantage Baselines',
+          core_concept:
+            'Subtracting the state value baseline V(s) isolates how much better an action was than expected, slashing gradient variance.',
+          spoken_narration:
+            'If every action in a lucky state gives a reward of +500, raw Policy Gradients push up even mediocre actions! By subtracting the average score V(s), the Advantage A(s,a) tells the Actor whether an action beat expectations.',
+          visual_analogy: {
+            target_concept: 'Advantage Function A(s, a) = Q(s, a) - V(s)',
+            everyday_parallel:
+              'Grading a student relative to the exam difficulty average rather than raw points on an easy test.',
+          },
+          key_points: [
+            'Actor (policy π_θ) chooses actions; Critic (value V_φ) evaluates states.',
+            'Subtracting V(s) leaves expected gradient unbiased while reducing variance.',
+            'Positive advantage reinforces the action; negative advantage suppresses it.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'How does subtracting the baseline V(s) prevent the policy from reinforcing a sub-optimal action in a high-reward state?',
+            expected_concepts: ['average', 'baseline', 'variance', 'relative', 'advantage'],
+            hint: 'Compare scoring +90 when the state average is +100 versus when the average is +50.',
+          },
+        },
+        {
+          module_id: 'mod_6',
+          title: 'Proximal Policy Optimization (PPO Clipping)',
+          core_concept:
+            'PPO clips the policy probability ratio so no single gradient step can destructively alter the agent behavior.',
+          spoken_narration:
+            'In supervised learning, a bad gradient step can be fixed on the next batch because the dataset stays fixed. In RL, a bad policy step ruins the agent, which then collects terrible data! PPO puts guardrails around each update.',
+          visual_analogy: {
+            target_concept: 'Clipped Probability Ratio r_t(θ) ∈ [1 - ε, 1 + ε]',
+            everyday_parallel:
+              'A mountain climber clipping into safety carabiners every few feet so a slip cannot cause a free-fall.',
+          },
+          key_points: [
+            'Probability ratio r_t(θ) = π_θ(a|s) / π_old(a|s) measures policy shift.',
+            'Clipping within [1 - ε, 1 + ε] removes incentive for extreme weight jumps.',
+            'Delivers Trust Region stability with simple first-order SGD.',
+          ],
+          understanding_check: {
+            question_spoken:
+              'Why is an overly large policy update much more dangerous in Reinforcement Learning than in standard supervised learning?',
+            expected_concepts: ['data collection', 'collapse', 'ratio', 'clip', 'trust region'],
+            hint: 'Remember that the RL policy itself collects the next batch of training experiences.',
           },
         },
       ],
@@ -828,28 +1006,147 @@ export function evaluateUnderstandingResponse(
   };
 }
 
+/**
+ * Determines target module count dynamically based on word count and section headings:
+ * - Short notes (< 300 words): 2 modules (or explicit heading count if >= 3)
+ * - Medium section (300–900 words): 3–5 modules
+ * - Long chapter (900+ words or >= 6 headings): 6–12 modules (one module per distinct sub-topic)
+ */
+export function determineDynamicModuleCount(rawText: string): number {
+  const cleaned = (rawText || '').trim();
+  if (!cleaned) return 1;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  // Detect explicit markdown or numbered headings
+  const lines = cleaned.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const headingLines = lines.filter(
+    (line, idx) =>
+      idx > 0 &&
+      line.length >= 4 &&
+      line.length <= 100 &&
+      (/^(#{1,4}\s+|\d+[\.\)]\s+|section\s+\d+|module\s+\d+|part\s+\d+|chapter\s+\d+)/i.test(
+        line
+      ) ||
+        (/^[A-Z][A-Za-z0-9\s,&:-]+$/.test(line) && !line.endsWith('.')))
+  );
+
+  const headingCount = headingLines.length;
+
+  if (headingCount >= 6) {
+    return Math.min(12, headingCount);
+  }
+
+  if (wordCount < 300) {
+    return headingCount >= 3 ? Math.min(5, headingCount) : 2;
+  }
+
+  if (wordCount < 900) {
+    const byWords = Math.round(wordCount / 180);
+    return Math.max(3, Math.min(5, Math.max(byWords, headingCount)));
+  }
+
+  // Long chapter (900+ words) -> 6 to 12 modules
+  const byLongWords = Math.ceil(wordCount / 150);
+  return Math.max(6, Math.min(12, Math.max(byLongWords, headingCount)));
+}
+
+/**
+ * Segments raw study text into `targetCount` coherent topic clusters without any hardcoded 4-module cap.
+ */
+export function segmentStudyMaterialIntoModules(
+  rawText: string
+): { heading: string; body: string }[] {
+  const cleaned = (rawText || '').trim();
+  if (!cleaned) {
+    return [{ heading: 'Core Concept Overview', body: 'Core domain principles and mechanisms.' }];
+  }
+
+  const targetCount = determineDynamicModuleCount(cleaned);
+
+  // Split into paragraphs (excluding a standalone chapter title on line 0 if present)
+  const rawParagraphs = cleaned
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+
+  const contentBlocks =
+    rawParagraphs.length > 1 &&
+    rawParagraphs[0].length < 95 &&
+    !rawParagraphs[0].includes('. ')
+      ? rawParagraphs.slice(1)
+      : rawParagraphs;
+
+  // If contentBlocks has at least targetCount paragraphs, group them evenly into targetCount clusters
+  if (contentBlocks.length >= targetCount) {
+    const clusters: { heading: string; body: string }[] = [];
+    for (let i = 0; i < targetCount; i++) {
+      const startIdx = Math.floor((i * contentBlocks.length) / targetCount);
+      const endIdx = Math.floor(((i + 1) * contentBlocks.length) / targetCount);
+      const slice = contentBlocks.slice(startIdx, Math.max(startIdx + 1, endIdx));
+      const combined = slice.join('\n\n');
+      const firstLine = slice[0].split(/\r?\n/)[0].replace(/^[#*\d\.\)\s-]+/, '').trim();
+      const heading =
+        firstLine.length >= 4 && firstLine.length <= 68
+          ? firstLine.replace(/[.!?]+$/, '')
+          : `Concept Cluster ${i + 1}`;
+      clusters.push({ heading, body: combined });
+    }
+    return clusters;
+  }
+
+  // Otherwise, split by sentences so even a single dense block yields targetCount distinct modules
+  const allSentences = contentBlocks
+    .join(' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (allSentences.length >= targetCount) {
+    const clusters: { heading: string; body: string }[] = [];
+    for (let i = 0; i < targetCount; i++) {
+      const startIdx = Math.floor((i * allSentences.length) / targetCount);
+      const endIdx = Math.floor(((i + 1) * allSentences.length) / targetCount);
+      const slice = allSentences.slice(startIdx, Math.max(startIdx + 1, endIdx));
+      const body = slice.join(' ');
+      const snippet = slice[0]
+        .replace(/^[#*\d\.\)\s-]+/, '')
+        .slice(0, 56)
+        .replace(/[.!?]+$/, '')
+        .trim();
+      clusters.push({
+        heading: snippet || `Core Principle ${i + 1}`,
+        body,
+      });
+    }
+    return clusters;
+  }
+
+  // Fallback for very brief 1-sentence input when targetCount === 2
+  return [
+    {
+      heading: 'Foundational Mechanism & Intuition',
+      body: cleaned,
+    },
+    {
+      heading: 'Applied Implications & Edge Cases',
+      body: `${cleaned} Understanding how this principle behaves under real-world boundary conditions.`,
+    },
+  ];
+}
+
 export function synthesizeAdaptiveLessonFromPayload(
   payload: OutgoingRequestPayload
 ): IncomingLessonResponse {
   const raw = payload.source_material.raw_text_extracted.trim();
-  const lower = raw.toLowerCase();
 
-  if (lower.includes('self-attention') || lower.includes('queries, keys')) {
-    return adaptLessonToConfig(PRESET_STUDY_MATERIALS[1].lesson, payload.tutor_config);
+  // Only return exact preset lessons if the raw text matches one of the presets
+  for (const preset of PRESET_STUDY_MATERIALS) {
+    if (raw === preset.rawText.trim()) {
+      return adaptLessonToConfig(preset.lesson, payload.tutor_config);
+    }
   }
-
-  if (
-    lower.includes('backpropagation') ||
-    lower.includes('gradient descent') ||
-    payload.source_material.file_name === 'chapter_4_neural_networks.pdf'
-  ) {
-    return adaptLessonToConfig(DEFAULT_INCOMING_LESSON, payload.tutor_config);
-  }
-
-  const paragraphs = raw
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 20);
 
   const firstLine = raw.split('\n')[0]?.replace(/^[#*-\s]+/, '').trim() || 'Custom Study Chapter';
   const chapterTitle =
@@ -857,33 +1154,38 @@ export function synthesizeAdaptiveLessonFromPayload(
       ? firstLine
       : `Interactive Mastery: ${payload.source_material.file_name.replace(/\.[^.]+$/, '')}`;
 
-  const chunks = paragraphs.length >= 2 ? paragraphs.slice(0, 3) : [raw || 'Core domain principles.'];
+  const topicClusters = segmentStudyMaterialIntoModules(raw);
 
-  const modules: LessonModule[] = chunks.map((chunk, idx) => {
-    const sentences = chunk
+  const modules: LessonModule[] = topicClusters.map((cluster, idx) => {
+    const sentences = cluster.body
       .split(/(?<=[.!?])\s+/)
       .map((s) => s.trim())
       .filter(Boolean);
-    const titleSnippet =
-      sentences[0]?.slice(0, 56).replace(/[.!?]+$/, '') || `Core Principle ${idx + 1}`;
+    const titleSnippet = cluster.heading || `Core Principle ${idx + 1}`;
     const coreConcept =
       sentences[0] || 'Understanding the structural mechanism and underlying intuition.';
 
     const words = Array.from(
       new Set(
-        chunk
+        cluster.body
           .toLowerCase()
           .replace(/[^a-z0-9\s]/g, '')
           .split(/\s+/)
-          .filter((w) => w.length >= 6 && !['chapter', 'because', 'however', 'through', 'between'].includes(w))
+          .filter(
+            (w) =>
+              w.length >= 6 &&
+              !['chapter', 'because', 'however', 'through', 'between', 'section'].includes(w)
+          )
       )
     ).slice(0, 4);
 
     return {
       module_id: `mod_${idx + 1}`,
-      title: `Module ${idx + 1}: ${titleSnippet}`,
+      title: titleSnippet,
       core_concept: coreConcept,
-      spoken_narration: `Let's unpack section ${idx + 1}. ${sentences.slice(0, 2).join(' ')} Think about how each piece interacts dynamically rather than memorizing isolated terms.`,
+      spoken_narration: `Let's unpack Module ${idx + 1}: ${titleSnippet}. ${sentences
+        .slice(0, 2)
+        .join(' ')} Notice how this mechanism builds our intuition step by step.`,
       visual_analogy: {
         target_concept: titleSnippet,
         everyday_parallel:
@@ -909,12 +1211,113 @@ export function synthesizeAdaptiveLessonFromPayload(
     {
       lesson_id: `lesson-${payload.session_id.slice(0, 6)}`,
       chapter_title: chapterTitle,
-      estimated_duration_minutes: Math.max(10, modules.length * 5),
+      estimated_duration_minutes: Math.max(8, modules.length * 4),
       welcome_spoken_intro: `Welcome! I have structured "${chapterTitle}" into ${modules.length} interactive concept modules tailored for a ${payload.tutor_config.education_level.replace('_', ' ')} level.`,
       modules,
     },
     payload.tutor_config
   );
+}
+
+/**
+ * Generates valid, standalone PDF 1.4 binary bytes from study text so preset PDFs
+ * and synthesized chapters can also be rendered in the native browser PDF <iframe>.
+ */
+export function buildSynthesizedPdfBytes(title: string, rawText: string): Uint8Array {
+  const escapePdfText = (str: string) =>
+    str
+      .replace(/[^\x20-\x7E]/g, ' ')
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+
+  const wrapLines = (text: string, maxChars = 78): string[] => {
+    const out: string[] = [];
+    for (const para of text.split(/\r?\n/)) {
+      const trimmed = para.trim();
+      if (!trimmed) {
+        out.push('');
+        continue;
+      }
+      const words = trimmed.split(/\s+/);
+      let current = '';
+      for (const w of words) {
+        if ((current + ' ' + w).trim().length > maxChars) {
+          if (current) out.push(current);
+          current = w;
+        } else {
+          current = current ? `${current} ${w}` : w;
+        }
+      }
+      if (current) out.push(current);
+    }
+    return out;
+  };
+
+  const allLines = [title, '', ...wrapLines(rawText)];
+  const linesPerPage = 38;
+  const pages: string[][] = [];
+  for (let i = 0; i < allLines.length; i += linesPerPage) {
+    pages.push(allLines.slice(i, i + linesPerPage));
+  }
+  if (pages.length === 0) pages.push([title]);
+
+  const objects: string[] = [];
+  // Obj 1: Catalog, Obj 2: Pages, Obj 3: Font
+  const pageCount = pages.length;
+  const firstPageObjId = 4;
+  const pageObjIds: number[] = [];
+  for (let p = 0; p < pageCount; p++) {
+    pageObjIds.push(firstPageObjId + p * 2);
+  }
+
+  objects.push(`1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj`);
+  objects.push(
+    `2 0 obj\n<< /Type /Pages /Kids [${pageObjIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageCount} >>\nendobj`
+  );
+  objects.push(
+    `3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj`
+  );
+
+  for (let p = 0; p < pageCount; p++) {
+    const pageObjId = firstPageObjId + p * 2;
+    const contentObjId = pageObjId + 1;
+    const lines = pages[p];
+    const ops: string[] = ['BT', '/F1 11 Tf', '50 745 Td', '15 TL'];
+    lines.forEach((line, idx) => {
+      const escaped = escapePdfText(line);
+      if (idx === 0) {
+        ops.push(`(${escaped}) Tj`);
+      } else {
+        ops.push(`T* (${escaped}) Tj`);
+      }
+    });
+    ops.push('ET');
+    const streamBody = ops.join('\n');
+
+    objects.push(
+      `${pageObjId} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObjId} 0 R >>\nendobj`
+    );
+    objects.push(
+      `${contentObjId} 0 obj\n<< /Length ${streamBody.length} >>\nstream\n${streamBody}\nendstream\nendobj`
+    );
+  }
+
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [0];
+  for (const obj of objects) {
+    offsets.push(pdf.length);
+    pdf += obj + '\n';
+  }
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let i = 1; i <= objects.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, '0')} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  const encoder = new TextEncoder();
+  return encoder.encode(pdf);
 }
 
 export function adaptLessonToConfig(
@@ -1070,3 +1473,214 @@ export function extractTextFromSseChunk(rawChunk: string): {
 
   return { tokens, done, structuredPayload };
 }
+
+export interface SpeechVoiceInput {
+  voiceURI: string;
+  name: string;
+  lang: string;
+  localService?: boolean;
+}
+
+export interface RankedVoiceOption extends SpeechVoiceInput {
+  tier: 1 | 2 | 3 | 4;
+  isHd: boolean;
+  personaBonus: number;
+  score: number;
+  displayLabel: string;
+}
+
+export const FALLBACK_NEURAL_VOICE_PRESETS: SpeechVoiceInput[] = [
+  {
+    voiceURI: 'Microsoft Ava Online (Natural) - English (United States)',
+    name: 'Microsoft Ava Online (Natural)',
+    lang: 'en-US',
+    localService: false,
+  },
+  {
+    voiceURI: 'Microsoft Aria Online (Natural) - English (United States)',
+    name: 'Microsoft Aria Online (Natural)',
+    lang: 'en-US',
+    localService: false,
+  },
+  {
+    voiceURI: 'Microsoft Andrew Online (Natural) - English (United States)',
+    name: 'Microsoft Andrew Online (Natural)',
+    lang: 'en-US',
+    localService: false,
+  },
+  {
+    voiceURI: 'Google US English',
+    name: 'Google US English',
+    lang: 'en-US',
+    localService: false,
+  },
+  {
+    voiceURI: 'Google UK English Female',
+    name: 'Google UK English Female',
+    lang: 'en-GB',
+    localService: false,
+  },
+  {
+    voiceURI: 'Google UK English Male',
+    name: 'Google UK English Male',
+    lang: 'en-GB',
+    localService: false,
+  },
+  {
+    voiceURI: 'Samantha',
+    name: 'Samantha',
+    lang: 'en-US',
+    localService: true,
+  },
+  {
+    voiceURI: 'Daniel',
+    name: 'Daniel',
+    lang: 'en-GB',
+    localService: true,
+  },
+];
+
+/**
+ * Ranks available English (`en-US`, `en-GB`, `en-*`) voices using the strict 4-tier
+ * neural priority hierarchy and maps persona preferences within tiers so legacy
+ * robotic voices (like Microsoft David / Microsoft Zira) are never chosen by default.
+ */
+export function rankEnglishVoicesForPersona(
+  voices: SpeechVoiceInput[],
+  persona: TutorPersona = 'warm_encouraging'
+): RankedVoiceOption[] {
+  const englishVoices = voices.filter((v) => {
+    const langNorm = (v.lang || '').toLowerCase().replace('_', '-');
+    return langNorm.startsWith('en-us') || langNorm.startsWith('en-gb') || langNorm.startsWith('en');
+  });
+
+  const sourceList =
+    englishVoices.length > 0 ? englishVoices : FALLBACK_NEURAL_VOICE_PRESETS;
+
+  const ranked = sourceList.map((v): RankedVoiceOption => {
+    const nameLower = v.name.toLowerCase();
+    const langNorm = (v.lang || 'en-US').replace('_', '-');
+
+    // Strict 4-Tier Hierarchy:
+    // 1. Voices containing "Natural" or "Online"
+    // 2. Voices containing "Google"
+    // 3. Apple premium voices (Samantha, Alex, Daniel, Ava)
+    // 4. Any remaining local English voice as a last resort
+    let tier: 1 | 2 | 3 | 4 = 4;
+    if (nameLower.includes('natural') || nameLower.includes('online')) {
+      tier = 1;
+    } else if (nameLower.includes('google')) {
+      tier = 2;
+    } else if (
+      nameLower.includes('samantha') ||
+      nameLower.includes('alex') ||
+      nameLower.includes('daniel') ||
+      nameLower.includes('ava')
+    ) {
+      tier = 3;
+    }
+
+    // Badge "Natural" and "Google" voices as HD
+    const isHd =
+      nameLower.includes('natural') ||
+      nameLower.includes('online') ||
+      nameLower.includes('google');
+
+    const tierBaseScore =
+      tier === 1 ? 400 : tier === 2 ? 300 : tier === 3 ? 200 : 100;
+
+    // Persona-specific voice affinity within each priority tier
+    let personaBonus = 0;
+    if (persona === 'warm_encouraging') {
+      if (nameLower.includes('ava')) personaBonus += 35;
+      else if (nameLower.includes('aria')) personaBonus += 30;
+      else if (nameLower.includes('google us english')) personaBonus += 28;
+      else if (nameLower.includes('samantha')) personaBonus += 22;
+    } else if (persona === 'crisp_academic') {
+      if (nameLower.includes('google uk english')) personaBonus += 36;
+      else if (nameLower.includes('andrew')) personaBonus += 34;
+      else if (nameLower.includes('daniel')) personaBonus += 30;
+      if (langNorm.toLowerCase().includes('gb')) personaBonus += 12;
+    } else if (persona === 'casual_peer') {
+      if (nameLower.includes('aria')) personaBonus += 32;
+      else if (nameLower.includes('ava')) personaBonus += 28;
+      else if (nameLower.includes('google us english')) personaBonus += 26;
+      else if (nameLower.includes('samantha') || nameLower.includes('alex')) {
+        personaBonus += 22;
+      }
+    }
+
+    // Deprioritize legacy robotic voices ("Microsoft David", "Microsoft Zira") inside Tier 4
+    if (nameLower.includes('david') || nameLower.includes('zira')) {
+      personaBonus -= 40;
+    }
+
+    const score = tierBaseScore + personaBonus;
+    const cleanName = v.name.replace(/\s*-\s*English.*$/i, '').trim();
+    const displayLabel = isHd
+      ? `[HD] ${cleanName} (${langNorm})`
+      : `${cleanName} (${langNorm})`;
+
+    return {
+      voiceURI: v.voiceURI || v.name,
+      name: v.name,
+      lang: langNorm,
+      localService: v.localService,
+      tier,
+      isHd,
+      personaBonus,
+      score,
+      displayLabel,
+    };
+  });
+
+  // Deduplicate by voiceURI and sort descending by score
+  const seen = new Set<string>();
+  const deduped: RankedVoiceOption[] = [];
+  for (const item of ranked.sort((a, b) => b.score - a.score)) {
+    if (!seen.has(item.voiceURI)) {
+      seen.add(item.voiceURI);
+      deduped.push(item);
+    }
+  }
+
+  return deduped;
+}
+
+export function getPersonaProsody(persona: TutorPersona): {
+  rate: number;
+  pitch: number;
+} {
+  if (persona === 'warm_encouraging') {
+    return { rate: 1.0, pitch: 1.02 };
+  }
+  if (persona === 'crisp_academic') {
+    return { rate: 1.03, pitch: 0.98 };
+  }
+  return { rate: 1.05, pitch: 1.0 };
+}
+
+/**
+ * Splits spoken_narration or spoken_reply into individual sentences using
+ * match(/[^.!?]+[.!?]+/g) (plus any trailing unpunctuated text) so Chrome's
+ * cloud TTS voices never cut out at the ~15-second utterance limit.
+ */
+export function splitIntoSpeechSentences(rawText: string): string[] {
+  const cleaned = rawText
+    .replace(/[*#_`~]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return [];
+
+  const matchedSentences = cleaned.match(/[^.!?]+[.!?]+/g) || [];
+  const consumedLength = matchedSentences.reduce((acc, s) => acc + s.length, 0);
+  const remainder = cleaned.slice(consumedLength).trim();
+
+  const chunks = matchedSentences.map((s) => s.trim()).filter(Boolean);
+  if (remainder) {
+    chunks.push(remainder);
+  }
+
+  return chunks.length > 0 ? chunks : [cleaned];
+}
+

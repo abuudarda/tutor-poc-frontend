@@ -38,6 +38,8 @@ interface SetupStudioProps {
   contentType: string;
   rawText: string;
   fileMeta: FileMetadataSummary;
+  sourceFile: File | null;
+  sourceFileUrl: string | null;
   educationLevel: EducationLevel;
   simplicityLevel: SimplicityLevel;
   methodology: TeachingMethodology;
@@ -74,6 +76,8 @@ export function SetupStudio({
   contentType,
   rawText,
   fileMeta,
+  sourceFile,
+  sourceFileUrl,
   educationLevel,
   simplicityLevel,
   methodology,
@@ -382,6 +386,11 @@ export function SetupStudio({
                 <span className="font-mono font-medium text-slate-900 dark:text-slate-200 truncate">
                   {fileMeta.fileName}
                 </span>
+                {(sourceFile || sourceFileUrl) && (
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[10px] font-mono shrink-0">
+                    Classroom Viewer Ready
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2 font-mono tabular-nums text-slate-500 dark:text-slate-400">
                 <span>

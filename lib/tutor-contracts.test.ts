@@ -5,13 +5,18 @@ import {
   DEFAULT_OUTGOING_REQUEST,
   buildOutgoingPayload,
   buildEvaluateCheckpointPayload,
+  buildSynthesizedPdfBytes,
   buildTutorChatPayload,
+  determineDynamicModuleCount,
   estimateFileMetadata,
   evaluateUnderstandingResponse,
   extractTextFromSseChunk,
   generateContextualTutorReply,
+  getPersonaProsody,
   normalizeBaseUrl,
   normalizeTutorConfig,
+  rankEnglishVoicesForPersona,
+  splitIntoSpeechSentences,
   synthesizeAdaptiveLessonFromPayload,
   validateIncomingLessonJson,
 } from './tutor-contracts';
@@ -140,3 +145,109 @@ test('generateContextualTutorReply returns TutorChatResponse schema and extractT
   assert.equal(sse.tokens, 'Hello world!');
   assert.equal(sse.done, true);
 });
+
+test('rankEnglishVoicesForPersona enforces 4-tier priority hierarchy and persona preferences', () => {
+  const sampleVoices = [
+    { voiceURI: 'ms-david', name: 'Microsoft David - English (United States)', lang: 'en-US' },
+    { voiceURI: 'ms-zira', name: 'Microsoft Zira - English (United States)', lang: 'en-US' },
+    { voiceURI: 'apple-samantha', name: 'Samantha', lang: 'en-US' },
+    { voiceURI: 'google-us', name: 'Google US English', lang: 'en-US' },
+    { voiceURI: 'google-uk-f', name: 'Google UK English Female', lang: 'en-GB' },
+    { voiceURI: 'ms-andrew-nat', name: 'Microsoft Andrew Online (Natural)', lang: 'en-US' },
+    { voiceURI: 'ms-ava-nat', name: 'Microsoft Ava Online (Natural)', lang: 'en-US' },
+  ];
+
+  const warmRanked = rankEnglishVoicesForPersona(sampleVoices, 'warm_encouraging');
+  assert.equal(warmRanked[0].voiceURI, 'ms-ava-nat');
+  assert.equal(warmRanked[0].tier, 1);
+  assert.equal(warmRanked[0].isHd, true);
+  const samanthaIdx = warmRanked.findIndex((v) => v.voiceURI === 'apple-samantha');
+  const googleUsIdx = warmRanked.findIndex((v) => v.voiceURI === 'google-us');
+  const davidIdx = warmRanked.findIndex((v) => v.voiceURI === 'ms-david');
+  assert.ok(googleUsIdx < samanthaIdx);
+  assert.ok(samanthaIdx < davidIdx);
+
+  const academicRanked = rankEnglishVoicesForPersona(sampleVoices, 'crisp_academic');
+  assert.equal(academicRanked[0].voiceURI, 'ms-andrew-nat');
+  const ukIdx = academicRanked.findIndex((v) => v.voiceURI === 'google-uk-f');
+  const usIdx = academicRanked.findIndex((v) => v.voiceURI === 'google-us');
+  assert.ok(ukIdx < usIdx);
+
+  assert.deepEqual(getPersonaProsody('warm_encouraging'), { rate: 1.0, pitch: 1.02 });
+  assert.deepEqual(getPersonaProsody('crisp_academic'), { rate: 1.03, pitch: 0.98 });
+  assert.deepEqual(getPersonaProsody('casual_peer'), { rate: 1.05, pitch: 1.0 });
+});
+
+test('splitIntoSpeechSentences splits multi-sentence text cleanly for sequential TTS queueing', () => {
+  const paragraph =
+    'Imagine you are lost on a mountainside in thick fog! How do you reach the valley? You feel the slope under your feet. Trailing fragment';
+  const chunks = splitIntoSpeechSentences(paragraph);
+  assert.equal(chunks.length, 4);
+  assert.equal(chunks[0], 'Imagine you are lost on a mountainside in thick fog!');
+  assert.equal(chunks[1], 'How do you reach the valley?');
+  assert.equal(chunks[2], 'You feel the slope under your feet.');
+  assert.equal(chunks[3], 'Trailing fragment');
+});
+
+test('determineDynamicModuleCount and synthesizeAdaptiveLessonFromPayload scale from 2 to 8+ modules dynamically', () => {
+  // 1. Short notes (< 300 words) -> 2 modules
+  const shortNotes =
+    'Chapter 1: Thermodynamics Basics\n\nFirst law of thermodynamics states that energy is conserved across closed systems.\n\nSecond law states that entropy increases in isolated systems over time.';
+  assert.equal(determineDynamicModuleCount(shortNotes), 2);
+  const shortLesson = synthesizeAdaptiveLessonFromPayload({
+    ...DEFAULT_OUTGOING_REQUEST,
+    source_material: {
+      file_name: 'short_notes.txt',
+      content_type: 'text/plain',
+      raw_text_extracted: shortNotes,
+    },
+  });
+  assert.equal(shortLesson.modules.length, 2);
+
+  // 2. Medium section (300-900 words) -> 3 to 5 modules
+  const mediumWords = Array.from(
+    { length: 4 },
+    (_, i) =>
+      `${i + 1}. Section Topic ${i + 1}\n` +
+      Array.from(
+        { length: 120 },
+        (__, w) => `concept_${i}_${w}`
+      ).join(' ') +
+      '.'
+  ).join('\n\n');
+  const medCount = determineDynamicModuleCount(mediumWords);
+  assert.ok(medCount >= 3 && medCount <= 5);
+
+  // 3. Long chapter (900+ words or >= 6 headings) -> 6 to 8+ modules
+  const longChapter = [
+    'Chapter 9: Distributed Systems Architecture',
+    ...Array.from(
+      { length: 7 },
+      (_, i) =>
+        `${i + 1}. Subsystem Topic ${i + 1}\n` +
+        Array.from({ length: 150 }, (__, w) => `distributed_token_${i}_${w}`).join(' ') +
+        '.'
+    ),
+  ].join('\n\n');
+  const longCount = determineDynamicModuleCount(longChapter);
+  assert.equal(longCount, 7);
+
+  const longLesson = synthesizeAdaptiveLessonFromPayload({
+    ...DEFAULT_OUTGOING_REQUEST,
+    source_material: {
+      file_name: 'distributed_systems.pdf',
+      content_type: 'application/pdf',
+      raw_text_extracted: longChapter,
+    },
+  });
+  assert.equal(longLesson.modules.length, 7);
+  const validated = validateIncomingLessonJson(JSON.stringify(longLesson));
+  assert.equal(validated.valid, true);
+
+  // 4. Synthesized PDF bytes start with %PDF-1.4
+  const pdfBytes = buildSynthesizedPdfBytes('Test Chapter', shortNotes);
+  const header = new TextDecoder().decode(pdfBytes.slice(0, 8));
+  assert.equal(header, '%PDF-1.4');
+});
+
+
