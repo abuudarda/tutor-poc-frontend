@@ -27,7 +27,7 @@ import { SetupStudio } from '@/components/setup-studio';
 import { InteractiveClassroom } from '@/components/interactive-classroom';
 import { DeveloperDebugDrawer } from '@/components/developer-debug-drawer';
 
-const DEFAULT_DEMO_YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+const DEFAULT_DEMO_YOUTUBE_URL = 'https://youtu.be/pQrWq7AJuJY';
 const DEMO_YOUTUBE_STORAGE_KEY = 'socratica_demo_youtube_url';
 
 function getYouTubeEmbedUrl(url: string): string {
