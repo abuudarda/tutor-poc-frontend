@@ -79,6 +79,7 @@ interface InteractiveClassroomProps {
   sseStreamingEnabled: boolean;
   isDarkMode: boolean;
   isDebugDrawerOpen: boolean;
+  showDevOptions?: boolean;
   autoSpeakTrigger: number;
   onToggleSseStreaming: (enabled: boolean) => void;
   onToggleDarkMode: () => void;
@@ -112,6 +113,7 @@ export function InteractiveClassroom({
   sseStreamingEnabled,
   isDarkMode,
   isDebugDrawerOpen,
+  showDevOptions: showDevOptionsProp,
   autoSpeakTrigger,
   onToggleSseStreaming,
   onToggleDarkMode,
@@ -121,6 +123,12 @@ export function InteractiveClassroom({
   onBackToStudio,
   onLogApiTraffic,
 }: InteractiveClassroomProps) {
+  const showDevOptions =
+    showDevOptionsProp ??
+    (process.env.NEXT_PUBLIC_SHOW_DEV_OPTIONS === 'true' ||
+      (typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('dev') === 'true'));
+
   const activeModule: LessonModule =
     lesson.modules[activeModuleIndex] || lesson.modules[0];
 
@@ -1405,24 +1413,26 @@ export function InteractiveClassroom({
               </button>
 
               {/* 3. Developer Sandbox Show/Hide Button */}
-              <button
-                id="sidebar-debug-drawer-btn"
-                type="button"
-                onClick={onToggleDebugDrawer}
-                className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md border text-xs font-mono font-medium transition-colors cursor-pointer ${
-                  isDebugDrawerOpen
-                    ? 'bg-[#D95D39] text-white border-[#D95D39]'
-                    : 'bg-[#181816] dark:bg-[#222220] text-stone-100 border-zinc-800 dark:border-zinc-700 hover:bg-zinc-800'
-                }`}
-              >
-                <span className="inline-flex items-center gap-2">
-                  <Terminal className="w-3.5 h-3.5 text-[#E87A5A] shrink-0" />
-                  <span>Developer JSON Sandbox</span>
-                </span>
-                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-none bg-[#111110] text-stone-200 border border-zinc-700">
-                  {isDebugDrawerOpen ? 'Hide' : 'Show'}
-                </span>
-              </button>
+              {showDevOptions && (
+                <button
+                  id="sidebar-debug-drawer-btn"
+                  type="button"
+                  onClick={onToggleDebugDrawer}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md border text-xs font-mono font-medium transition-colors cursor-pointer ${
+                    isDebugDrawerOpen
+                      ? 'bg-[#D95D39] text-white border-[#D95D39]'
+                      : 'bg-[#181816] dark:bg-[#222220] text-stone-100 border-zinc-800 dark:border-zinc-700 hover:bg-zinc-800'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5 text-[#E87A5A] shrink-0" />
+                    <span>Developer JSON Sandbox</span>
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-none bg-[#111110] text-stone-200 border border-zinc-700">
+                    {isDebugDrawerOpen ? 'Hide' : 'Show'}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         </aside>

@@ -63,6 +63,14 @@ function getYouTubeEmbedUrl(url: string): string {
 }
 
 export default function MultimodalTutorApp() {
+  const [isClientUrlSynced, setIsClientUrlSynced] = useState<boolean>(false);
+
+  const showDevOptions =
+    process.env.NEXT_PUBLIC_SHOW_DEV_OPTIONS === 'true' ||
+    (isClientUrlSynced &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('dev') === 'true');
+
   // Active View: 'demo' (00 // Demo - Default Landing Page) | 'studio' (01 // Setup Studio) | 'classroom' (02 // Classroom) | 'developer' (03 // Developer Options)
   const [activeView, setActiveView] = useState<'demo' | 'studio' | 'classroom' | 'developer'>(
     'demo'
@@ -275,12 +283,16 @@ export default function MultimodalTutorApp() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const syncFromUrl = () => {
+      setIsClientUrlSynced(true);
       const params = new URLSearchParams(window.location.search);
       if (params.get('autostart') === '1' || params.get('view') === 'classroom') {
         setActiveView('classroom');
       } else if (params.get('view') === 'studio') {
         setActiveView('studio');
-      } else if (params.get('view') === 'developer') {
+      } else if (
+        params.get('view') === 'developer' &&
+        (process.env.NEXT_PUBLIC_SHOW_DEV_OPTIONS === 'true' || params.get('dev') === 'true')
+      ) {
         setActiveView('developer');
       } else if (params.get('view') === 'demo') {
         setActiveView('demo');
@@ -758,21 +770,23 @@ export default function MultimodalTutorApp() {
           >
             02 // Classroom
           </a>
-          <a
-            id="nav-tab-developer"
-            href="#developer-options"
-            onClick={(e) => {
-              e.preventDefault();
-              setActiveView('developer');
-            }}
-            className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
-              activeView === 'developer'
-                ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
-                : ''
-            }`}
-          >
-            03 // Developer Options
-          </a>
+          {showDevOptions && (
+            <a
+              id="nav-tab-developer"
+              href="#developer-options"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveView('developer');
+              }}
+              className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
+                activeView === 'developer'
+                  ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
+                  : ''
+              }`}
+            >
+              03 // Developer Options
+            </a>
+          )}
         </nav>
 
         {/* Zone 3: 1 primary action */}
@@ -991,10 +1005,15 @@ export default function MultimodalTutorApp() {
             sseStreamingEnabled={sseStreamingEnabled}
             isDarkMode={isDarkMode}
             isDebugDrawerOpen={isDebugDrawerOpen}
+            showDevOptions={showDevOptions}
             autoSpeakTrigger={autoSpeakTrigger}
             onToggleSseStreaming={setSseStreamingEnabled}
             onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
-            onToggleDebugDrawer={() => setActiveView('developer')}
+            onToggleDebugDrawer={() => {
+              if (showDevOptions) {
+                setActiveView('developer');
+              }
+            }}
             onSelectModule={setActiveModuleIndex}
             onMarkModuleMastered={handleMarkModuleMastered}
             onBackToStudio={() => setActiveView('studio')}
@@ -1445,19 +1464,21 @@ export default function MultimodalTutorApp() {
         )}
       </main>
 
-      {/* Developer Debug Drawer Modal (Optional Modal Fallback) */}
-      <DeveloperDebugDrawer
-        key={incomingLesson.lesson_id}
-        isOpen={isDebugDrawerOpen}
-        onOpen={() => setIsDebugDrawerOpen(true)}
-        onClose={() => setIsDebugDrawerOpen(false)}
-        outgoingPayload={outgoingPayload}
-        incomingLesson={incomingLesson}
-        apiTrafficLogs={apiTrafficLogs}
-        sseStreamingEnabled={sseStreamingEnabled}
-        onToggleSseStreaming={setSseStreamingEnabled}
-        onApplyCustomLesson={handleApplyCustomLessonFromDrawer}
-      />
+      {/* Developer Debug Drawer Modal (Only rendered when showDevOptions is enabled) */}
+      {showDevOptions && (
+        <DeveloperDebugDrawer
+          key={incomingLesson.lesson_id}
+          isOpen={isDebugDrawerOpen}
+          onOpen={() => setIsDebugDrawerOpen(true)}
+          onClose={() => setIsDebugDrawerOpen(false)}
+          outgoingPayload={outgoingPayload}
+          incomingLesson={incomingLesson}
+          apiTrafficLogs={apiTrafficLogs}
+          sseStreamingEnabled={sseStreamingEnabled}
+          onToggleSseStreaming={setSseStreamingEnabled}
+          onApplyCustomLesson={handleApplyCustomLessonFromDrawer}
+        />
+      )}
     </div>
   );
 }
