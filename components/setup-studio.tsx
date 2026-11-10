@@ -5,12 +5,7 @@ import {
   Upload,
   FileText,
   Sliders,
-  Code2,
-  ChevronDown,
-  ChevronUp,
   Check,
-  Copy,
-  Server,
   BookOpen,
   ArrowRight,
   Loader2,
@@ -29,7 +24,6 @@ import {
   FOCUS_AREA_OPTIONS,
   PERSONA_OPTIONS,
   PRESET_STUDY_MATERIALS,
-  normalizeBaseUrl,
 } from '@/lib/tutor-contracts';
 
 interface SetupStudioProps {
@@ -45,8 +39,6 @@ interface SetupStudioProps {
   focusAreas: string[];
   persona: TutorPersona;
   outgoingPayload: OutgoingRequestPayload;
-  mockBackendMode: boolean;
-  backendBaseUrl: string;
   isParsingDocument: boolean;
   parseError: string | null;
   isGenerating: boolean;
@@ -65,8 +57,6 @@ interface SetupStudioProps {
   onChangeMethodology: (val: TeachingMethodology) => void;
   onToggleFocusArea: (area: string) => void;
   onChangePersona: (val: TutorPersona) => void;
-  onToggleMockBackend: (val: boolean) => void;
-  onChangeBackendBaseUrl: (val: string) => void;
   onGenerateLesson: () => void;
 }
 
@@ -83,8 +73,6 @@ export function SetupStudio({
   focusAreas,
   persona,
   outgoingPayload,
-  mockBackendMode,
-  backendBaseUrl,
   isParsingDocument,
   parseError,
   isGenerating,
@@ -98,17 +86,12 @@ export function SetupStudio({
   onChangeMethodology,
   onToggleFocusArea,
   onChangePersona,
-  onToggleMockBackend,
-  onChangeBackendBaseUrl,
   onGenerateLesson,
 }: SetupStudioProps) {
   const [materialTab, setMaterialTab] = useState<'upload' | 'paste'>('upload');
   const [isDragging, setIsDragging] = useState(false);
-  const [isJsonPreviewOpen, setIsJsonPreviewOpen] = useState(false);
-  const [copiedJson, setCopiedJson] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const cleanBase = normalizeBaseUrl(backendBaseUrl);
   const isTextValidForGeneration = rawText.trim().length >= 20;
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -117,16 +100,6 @@ export function SetupStudio({
     const file = e.dataTransfer.files?.[0];
     if (file) {
       void onUploadFileToBackend(file);
-    }
-  };
-
-  const handleCopyJson = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(outgoingPayload, null, 2));
-      setCopiedJson(true);
-      setTimeout(() => setCopiedJson(false), 1800);
-    } catch {
-      // ignore clipboard restriction
     }
   };
 
@@ -181,210 +154,209 @@ export function SetupStudio({
       {/* Two-Column Publication & Syllabus Desk */}
       <div className="grid grid-cols-1 lg:grid-cols-12 border-b border-x border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]">
         {/* Left Column (5 cols): Document Upload & Source Inspector */}
-        <div className="lg:col-span-5 lg:border-r border-stone-300/80 dark:border-zinc-800 divide-y divide-stone-300/80 dark:divide-zinc-800 flex flex-col justify-between">
-          <div className="p-6 space-y-5">
-            <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-xs font-semibold text-[#D95D39] dark:text-[#E87A5A]">
-                  01
-                </span>
-                <BookOpen className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
-                <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
-                  DOCUMENT UPLOAD &amp; SOURCE INSPECTOR
-                </h2>
-              </div>
+        <div className="lg:col-span-5 lg:border-r border-stone-300/80 dark:border-zinc-800 flex flex-col justify-between">
+          <div className="p-6 space-y-5 flex-1 flex flex-col justify-between">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-semibold text-[#D95D39] dark:text-[#E87A5A]">
+                    01
+                  </span>
+                  <BookOpen className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
+                  <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                    DOCUMENT UPLOAD &amp; SOURCE INSPECTOR
+                  </h2>
+                </div>
 
-              {/* Tab Switcher: Upload vs Paste Raw Text */}
-              <div
-                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
-                role="tablist"
-                aria-label="Study material input method"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={materialTab === 'upload'}
-                  onClick={() => setMaterialTab('upload')}
-                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    materialTab === 'upload'
-                      ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
-                  }`}
-                >
-                  Upload File
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={materialTab === 'paste'}
-                  onClick={() => setMaterialTab('paste')}
-                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    materialTab === 'paste'
-                      ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
-                  }`}
-                >
-                  Paste Raw Text
-                </button>
-              </div>
-            </div>
-
-            {materialTab === 'upload' ? (
-              <div className="space-y-4">
-                {/* Technical Blueprint Dropzone with dashed 1px stone border */}
+                {/* Tab Switcher: Upload vs Paste Raw Text */}
                 <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragging(true);
-                  }}
-                  onDragLeave={() => setIsDragging(false)}
-                  onDrop={handleDrop}
-                  className={`rounded-md border border-dashed p-5 text-center transition-colors ${
-                    isDragging
-                      ? 'border-[#D95D39] bg-[#D95D39]/5'
-                      : 'border-stone-400 dark:border-zinc-700 bg-[#F7F6F2] dark:bg-[#111110] hover:border-[#D95D39]'
-                  }`}
+                  className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
+                  role="tablist"
+                  aria-label="Study material input method"
                 >
-                  <input
-                    ref={fileInputRef}
-                    id="study-file-input"
-                    type="file"
-                    accept=".pdf,.png,.jpg,.jpeg,.txt,.md,.docx"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) void onUploadFileToBackend(file);
-                    }}
-                    className="sr-only"
-                  />
-
-                  {isParsingDocument ? (
-                    <div className="py-2 flex flex-col items-center justify-center space-y-2">
-                      <Loader2 className="w-5 h-5 text-[#D95D39] dark:text-[#E87A5A] animate-spin" />
-                      <p className="text-xs font-mono font-semibold text-zinc-900 dark:text-stone-100">
-                        PARSING DOCUMENT VIA NVIDIA NEMOTRON PARSE...
-                      </p>
-                      <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
-                        POST {cleanBase || 'local'}/api/v1/parse-document
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] mx-auto mb-2" />
-                      <p className="text-xs font-medium text-zinc-900 dark:text-stone-200">
-                        Drop manuscript file here, or{' '}
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-[#D95D39] dark:text-[#E87A5A] underline underline-offset-2 font-semibold cursor-pointer"
-                        >
-                          browse local archive
-                        </button>
-                      </p>
-                      <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 mt-1">
-                        ACCEPTED: .PDF · .PNG · .JPG · .TXT · .MD · .DOCX
-                      </p>
-                    </>
-                  )}
-                </div>
-
-                {parseError && (
-                  <div
-                    role="alert"
-                    className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-950/10 text-xs text-amber-800 dark:text-amber-300 font-mono"
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={materialTab === 'upload'}
+                    onClick={() => setMaterialTab('upload')}
+                    className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      materialTab === 'upload'
+                        ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
+                    }`}
                   >
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                    <span>{parseError}</span>
-                  </div>
-                )}
-
-                {/* Extracted Text Preview Snippet */}
-                <div>
-                  <div className="flex items-center justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1.5">
-                    <label
-                      htmlFor="extracted-preview-textarea"
-                      className="uppercase tracking-wider"
-                    >
-                      EXTRACTED MANUSCRIPT TEXT (EDITABLE):
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setMaterialTab('paste')}
-                      className="text-[#D95D39] dark:text-[#E87A5A] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
-                    >
-                      EXPAND FULL EDITOR →
-                    </button>
-                  </div>
-                  <textarea
-                    id="extracted-preview-textarea"
-                    rows={5}
-                    value={rawText}
-                    onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
-                    className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-800 dark:text-stone-300 focus:outline-none focus:border-[#D95D39]"
-                    placeholder="Extracted text from your file will appear here..."
-                  />
+                    Upload File
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={materialTab === 'paste'}
+                    onClick={() => setMaterialTab('paste')}
+                    className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                      materialTab === 'paste'
+                        ? 'bg-[#FCFBF9] dark:bg-[#181816] text-zinc-900 dark:text-stone-100 font-semibold'
+                        : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
+                    }`}
+                  >
+                    Paste Raw Text
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label
-                      htmlFor="custom-file-name"
-                      className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
-                    >
-                      SOURCE DOCUMENT NAME
-                    </label>
+
+              {materialTab === 'upload' ? (
+                <div className="space-y-4">
+                  {/* Technical Blueprint Dropzone with dashed 1px stone border */}
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={() => setIsDragging(false)}
+                    onDrop={handleDrop}
+                    className={`rounded-md border border-dashed p-5 text-center transition-colors ${
+                      isDragging
+                        ? 'border-[#D95D39] bg-[#D95D39]/5'
+                        : 'border-stone-400 dark:border-zinc-700 bg-[#F7F6F2] dark:bg-[#111110] hover:border-[#D95D39]'
+                    }`}
+                  >
                     <input
-                      id="custom-file-name"
-                      type="text"
-                      value={fileName}
-                      onChange={(e) => onUpdateMaterial(e.target.value, contentType, rawText)}
-                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
+                      ref={fileInputRef}
+                      id="study-file-input"
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.txt,.md,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void onUploadFileToBackend(file);
+                      }}
+                      className="sr-only"
+                    />
+
+                    {isParsingDocument ? (
+                      <div className="py-2 flex flex-col items-center justify-center space-y-2">
+                        <Loader2 className="w-5 h-5 text-[#D95D39] dark:text-[#E87A5A] animate-spin" />
+                        <p className="text-xs font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                          PARSING DOCUMENT VIA NVIDIA NEMOTRON PARSE...
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] mx-auto mb-2" />
+                        <p className="text-xs font-medium text-zinc-900 dark:text-stone-200">
+                          Drop manuscript file here, or{' '}
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="text-[#D95D39] dark:text-[#E87A5A] underline underline-offset-2 font-semibold cursor-pointer"
+                          >
+                            browse local archive
+                          </button>
+                        </p>
+                        <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 mt-1">
+                          ACCEPTED: .PDF · .PNG · .JPG · .TXT · .MD · .DOCX
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {parseError && (
+                    <div
+                      role="alert"
+                      className="flex items-start gap-2 p-3 rounded-md border border-amber-500/40 bg-amber-950/10 text-xs text-amber-800 dark:text-amber-300 font-mono"
+                    >
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{parseError}</span>
+                    </div>
+                  )}
+
+                  {/* Extracted Text Preview Snippet */}
+                  <div>
+                    <div className="flex items-center justify-between text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1.5">
+                      <label
+                        htmlFor="extracted-preview-textarea"
+                        className="uppercase tracking-wider"
+                      >
+                        EXTRACTED MANUSCRIPT TEXT (EDITABLE):
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setMaterialTab('paste')}
+                        className="text-[#D95D39] dark:text-[#E87A5A] hover:underline whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        EXPAND FULL EDITOR →
+                      </button>
+                    </div>
+                    <textarea
+                      id="extracted-preview-textarea"
+                      rows={8}
+                      value={rawText}
+                      onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
+                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-800 dark:text-stone-300 focus:outline-none focus:border-[#D95D39]"
+                      placeholder="Extracted text from your file will appear here..."
                     />
                   </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label
+                        htmlFor="custom-file-name"
+                        className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
+                      >
+                        SOURCE DOCUMENT NAME
+                      </label>
+                      <input
+                        id="custom-file-name"
+                        type="text"
+                        value={fileName}
+                        onChange={(e) => onUpdateMaterial(e.target.value, contentType, rawText)}
+                        className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="custom-mime-type"
+                        className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
+                      >
+                        CONTENT MIME TYPE
+                      </label>
+                      <select
+                        id="custom-mime-type"
+                        value={contentType}
+                        onChange={(e) => onUpdateMaterial(fileName, e.target.value, rawText)}
+                        className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
+                      >
+                        <option value="application/pdf">application/pdf</option>
+                        <option value="text/markdown">text/markdown</option>
+                        <option value="text/plain">text/plain</option>
+                        <option value="image/png">image/png</option>
+                        <option value="image/jpeg">image/jpeg</option>
+                        <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                          application/docx
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
                     <label
-                      htmlFor="custom-mime-type"
+                      htmlFor="raw-study-text-input"
                       className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
                     >
-                      CONTENT MIME TYPE
+                      RAW MANUSCRIPT / LECTURE TRANSCRIPT (MIN 20 CHARS)
                     </label>
-                    <select
-                      id="custom-mime-type"
-                      value={contentType}
-                      onChange={(e) => onUpdateMaterial(fileName, e.target.value, rawText)}
-                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
-                    >
-                      <option value="application/pdf">application/pdf</option>
-                      <option value="text/markdown">text/markdown</option>
-                      <option value="text/plain">text/plain</option>
-                      <option value="image/png">image/png</option>
-                      <option value="image/jpeg">image/jpeg</option>
-                      <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                        application/docx
-                      </option>
-                    </select>
+                    <textarea
+                      id="raw-study-text-input"
+                      rows={10}
+                      value={rawText}
+                      onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
+                      placeholder="Paste your chapter text, formulas, or lecture notes here..."
+                      className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
+                    />
                   </div>
                 </div>
-
-                <div>
-                  <label
-                    htmlFor="raw-study-text-input"
-                    className="block uppercase tracking-wider text-[11px] font-mono text-stone-500 dark:text-stone-400 mb-1"
-                  >
-                    RAW MANUSCRIPT / LECTURE TRANSCRIPT (MIN 20 CHARS)
-                  </label>
-                  <textarea
-                    id="raw-study-text-input"
-                    rows={8}
-                    value={rawText}
-                    onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
-                    placeholder="Paste your chapter text, formulas, or lecture notes here..."
-                    className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-3 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
-                  />
-                </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* File Preview Metadata Bar */}
             <div className="pt-3 border-t border-stone-300/80 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs text-stone-600 dark:text-stone-400">
@@ -410,83 +382,9 @@ export function SetupStudio({
               </div>
             </div>
           </div>
-
-          {/* Backend Execution Mode & Live FastAPI Base URL */}
-          <div className="p-6 bg-[#EFECE6]/50 dark:bg-[#141413] space-y-3.5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <Server className="w-3.5 h-3.5 text-stone-600 dark:text-stone-400 shrink-0" />
-                <h3 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
-                  STUDIO TELEMETRY // BACKEND ENDPOINT
-                </h3>
-              </div>
-
-              {/* Segmented Toggle: Live API Mode vs Mock Fallback */}
-              <div
-                className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
-                role="group"
-                aria-label="Backend mode selection"
-              >
-                <button
-                  type="button"
-                  onClick={() => onToggleMockBackend(false)}
-                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    !mockBackendMode
-                      ? 'bg-[#D95D39] text-white font-semibold'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
-                  }`}
-                >
-                  Live API Mode
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onToggleMockBackend(true)}
-                  className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    mockBackendMode
-                      ? 'bg-[#D95D39] text-white font-semibold'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
-                  }`}
-                >
-                  Mock Fallback
-                </button>
-              </div>
-            </div>
-
-            {!mockBackendMode ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-mono">
-                  <label
-                    htmlFor="backend-base-url-input"
-                    className="uppercase tracking-wider text-stone-600 dark:text-stone-400"
-                  >
-                    FASTAPI BASE URL
-                  </label>
-                  <span className="text-emerald-800 dark:text-emerald-400 font-semibold">
-                    ● ONLINE CONTRACT
-                  </span>
-                </div>
-                <input
-                  id="backend-base-url-input"
-                  type="text"
-                  value={backendBaseUrl}
-                  onChange={(e) => onChangeBackendBaseUrl(e.target.value)}
-                  placeholder="https://tutor-poc-backend.vercel.app"
-                  className="w-full rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] px-3 py-1.5 text-xs font-mono text-zinc-900 dark:text-stone-200 focus:outline-none focus:border-[#D95D39]"
-                />
-                <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400 leading-relaxed">
-                  ROUTES: <code>/api/v1/parse-document</code> · <code>/api/v1/generate-lesson</code>{' '}
-                  · <code>/api/v1/evaluate-checkpoint</code> · <code>/api/v1/tutor-chat</code>
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs font-mono text-stone-600 dark:text-stone-400 leading-relaxed">
-                Simulates all 5 FastAPI endpoints locally in-browser with deterministic responses.
-              </p>
-            )}
-          </div>
         </div>
 
-        {/* Right Column (7 cols): Pedagogical Spec Sheet & Compile Action */}
+        {/* Right Column (7 cols): Pedagogical Spec Sheet & Generate Interactive Lesson Action */}
         <div className="lg:col-span-7 divide-y divide-stone-300/80 dark:divide-zinc-800 flex flex-col justify-between">
           <div className="p-6 space-y-6">
             <div className="flex items-center justify-between gap-4 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
@@ -676,107 +574,58 @@ export function SetupStudio({
             </div>
           </div>
 
-          {/* 3. Payload Inspector & Compile Action Footer */}
-          <div className="bg-[#EFECE6]/60 dark:bg-[#141413]">
-            {/* Collapsible "Preview Outgoing JSON" Drawer Trigger */}
-            <div className="px-6 py-3 border-b border-stone-300/80 dark:border-zinc-800 flex items-center justify-between gap-4">
-              <button
-                type="button"
-                aria-expanded={isJsonPreviewOpen}
-                onClick={() => setIsJsonPreviewOpen((prev) => !prev)}
-                className="flex items-center gap-2 text-xs font-mono text-zinc-800 dark:text-stone-200 hover:text-[#D95D39] dark:hover:text-[#E87A5A] transition-colors cursor-pointer"
+          {/* Primary Action Footer */}
+          <div className="bg-[#EFECE6]/60 dark:bg-[#141413] p-6 space-y-3.5">
+            {!isTextValidForGeneration && (
+              <div
+                role="alert"
+                className="p-3 rounded-md border border-amber-600/40 bg-amber-950/10 text-xs font-mono text-amber-800 dark:text-amber-300"
               >
-                <Code2 className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
-                <span>
-                  PREVIEW OUTGOING PAYLOAD (POST {cleanBase || ''}/api/v1/generate-lesson)
-                </span>
-                {isJsonPreviewOpen ? (
-                  <ChevronUp className="w-3.5 h-3.5 text-stone-500" />
-                ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-stone-500" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleCopyJson}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono text-stone-700 dark:text-stone-300 hover:text-zinc-900 dark:hover:text-white border border-stone-300/80 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] transition-colors cursor-pointer whitespace-nowrap shrink-0"
-              >
-                {copiedJson ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-700 dark:text-emerald-400" />
-                    COPIED
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" />
-                    COPY JSON
-                  </>
-                )}
-              </button>
-            </div>
-
-            {isJsonPreviewOpen && (
-              <div className="p-4 bg-[#111110] text-stone-200 border-b border-zinc-800 overflow-x-auto max-h-72">
-                <pre className="text-xs font-mono leading-relaxed">
-                  {JSON.stringify(outgoingPayload, null, 2)}
-                </pre>
+                Source text must be at least 20 characters before generating a lesson (currently{' '}
+                {rawText.trim().length} chars).
               </div>
             )}
 
-            {/* Primary CTA & Multi-Step Loading State */}
-            <div className="p-6 space-y-3.5">
-              {!isTextValidForGeneration && (
-                <div
-                  role="alert"
-                  className="p-3 rounded-md border border-amber-600/40 bg-amber-950/10 text-xs font-mono text-amber-800 dark:text-amber-300"
-                >
-                  Source text must be at least 20 characters before calling{' '}
-                  <code>/api/v1/generate-lesson</code> (currently {rawText.trim().length} chars).
-                </div>
-              )}
-
-              {generationError && (
-                <div
-                  role="alert"
-                  className="p-3.5 rounded-md border border-rose-600/40 bg-rose-950/10 text-xs font-mono text-rose-800 dark:text-rose-300"
-                >
-                  {generationError}
-                </div>
-              )}
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-0.5">
-                  <p className="text-xs font-semibold text-zinc-900 dark:text-stone-100">
-                    {isGenerating
-                      ? 'NVIDIA Nemotron 3.5 Bolt (enable_thinking=True) is compiling your lesson...'
-                      : 'Ready to compile interactive concept modules'}
-                  </p>
-                  <p className="text-[11px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">
-                    SESSION: {outgoingPayload.session_id.slice(0, 13)}... · TARGET:{' '}
-                    {mockBackendMode ? 'MOCK ENGINE' : cleanBase || 'LOCAL API'}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isGenerating || isParsingDocument || !isTextValidForGeneration}
-                  onClick={onGenerateLesson}
-                  className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-md text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] border border-[#D95D39] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>{generationStepText || 'Compiling Lesson...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Compile Lesson</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
+            {generationError && (
+              <div
+                role="alert"
+                className="p-3.5 rounded-md border border-rose-600/40 bg-rose-950/10 text-xs font-mono text-rose-800 dark:text-rose-300"
+              >
+                {generationError}
               </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-0.5">
+                <p className="text-xs font-semibold text-zinc-900 dark:text-stone-100">
+                  {isGenerating
+                    ? 'NVIDIA Nemotron 3.5 Bolt (enable_thinking=True) is compiling your lesson...'
+                    : 'Ready to compile interactive concept modules'}
+                </p>
+                <p className="text-[11px] text-stone-500 dark:text-stone-400 font-mono tabular-nums">
+                  SESSION: {outgoingPayload.session_id.slice(0, 13)}... · MODULES: AUTO-SCALED
+                </p>
+              </div>
+
+              <button
+                id="generate-interactive-lesson-btn"
+                type="button"
+                disabled={isGenerating || isParsingDocument || !isTextValidForGeneration}
+                onClick={onGenerateLesson}
+                className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-md text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] border border-[#D95D39] disabled:opacity-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>{generationStepText || 'Generating Lesson...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Generate Interactive Lesson</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -784,4 +633,5 @@ export function SetupStudio({
     </section>
   );
 }
+
 

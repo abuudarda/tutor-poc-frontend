@@ -1771,7 +1771,7 @@ export function extractSpeechRecognitionChunks(
   };
 }
 
-export const DEFAULT_DEMO_YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+export const DEFAULT_DEMO_YOUTUBE_URL = 'https://youtu.be/pQrWq7AJuJY';
 
 /**
  * Converts any standard YouTube link (youtube.com/watch?v=ID, youtu.be/ID,
@@ -1779,7 +1779,7 @@ export const DEFAULT_DEMO_YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9W
  * embed URL: https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1
  */
 export function getYouTubeEmbedUrl(url: string): string {
-  const fallbackId = 'dQw4w9WgXcQ';
+  const fallbackId = 'pQrWq7AJuJY';
   const raw = (url || '').trim();
   if (!raw) {
     return `https://www.youtube.com/embed/${fallbackId}?rel=0&modestbranding=1`;

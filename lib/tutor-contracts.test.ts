@@ -298,7 +298,7 @@ test('getYouTubeEmbedUrl converts watch, youtu.be, embed, and raw video IDs into
   const { getYouTubeEmbedUrl, DEFAULT_DEMO_YOUTUBE_URL } = await import('./tutor-contracts');
   assert.equal(
     getYouTubeEmbedUrl(DEFAULT_DEMO_YOUTUBE_URL),
-    'https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1'
+    'https://www.youtube.com/embed/pQrWq7AJuJY?rel=0&modestbranding=1'
   );
   assert.equal(
     getYouTubeEmbedUrl('https://www.youtube.com/watch?v=M7lc1UVf-VE&t=42s'),

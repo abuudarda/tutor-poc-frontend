@@ -1,7 +1,24 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Play, Settings2, Check, RotateCcw, ArrowRight, FileText, Sliders, Mic } from 'lucide-react';
+import {
+  Play,
+  Check,
+  RotateCcw,
+  ArrowRight,
+  FileText,
+  Sliders,
+  Mic,
+  Server,
+  Code2,
+  Copy,
+  Terminal,
+  Activity,
+  Radio,
+  AlertCircle,
+  CheckCircle2,
+  Video,
+} from 'lucide-react';
 import {
   EducationLevel,
   SimplicityLevel,
@@ -30,18 +47,30 @@ import { DeveloperDebugDrawer } from '@/components/developer-debug-drawer';
 const DEFAULT_DEMO_YOUTUBE_URL = 'https://youtu.be/pQrWq7AJuJY';
 const DEMO_YOUTUBE_STORAGE_KEY = 'socratica_demo_youtube_url';
 
+const ENDPOINT_INSPECTOR_TABS: { key: EndpointKey; label: string; path: string }[] = [
+  { key: 'parse-document', label: 'A. Parse Document', path: '/api/v1/parse-document' },
+  { key: 'generate-lesson', label: 'B. Generate Lesson', path: '/api/v1/generate-lesson' },
+  {
+    key: 'evaluate-checkpoint',
+    label: 'C. Evaluate Checkpoint',
+    path: '/api/v1/evaluate-checkpoint',
+  },
+  { key: 'tutor-chat', label: 'D/E. Tutor Chat', path: '/api/v1/tutor-chat' },
+];
+
 function getYouTubeEmbedUrl(url: string): string {
   return convertYouTubeUrlToEmbed(url);
 }
 
 export default function MultimodalTutorApp() {
-  // Active View: 'demo' (View 0) | 'studio' (View 1) | 'classroom' (View 2)
-  const [activeView, setActiveView] = useState<'demo' | 'studio' | 'classroom'>('studio');
+  // Active View: 'demo' (00 // Demo - Default Landing Page) | 'studio' (01 // Setup Studio) | 'classroom' (02 // Classroom) | 'developer' (03 // Developer Options)
+  const [activeView, setActiveView] = useState<'demo' | 'studio' | 'classroom' | 'developer'>(
+    'demo'
+  );
 
-  // Configurable YouTube Demo Video State (persisted in localStorage)
+  // Configurable YouTube Demo Video State (persisted in localStorage, managed in 03 // Developer Options)
   const [demoYoutubeUrl, setDemoYoutubeUrl] = useState<string>(DEFAULT_DEMO_YOUTUBE_URL);
   const [demoUrlInputDraft, setDemoUrlInputDraft] = useState<string>(DEFAULT_DEMO_YOUTUBE_URL);
-  const [isDemoUrlEditorOpen, setIsDemoUrlEditorOpen] = useState<boolean>(false);
   const [demoUrlSavedNotice, setDemoUrlSavedNotice] = useState<boolean>(false);
 
   // Dark / Light Academic Theme State
@@ -192,8 +221,19 @@ export default function MultimodalTutorApp() {
   const [masteredModuleIds, setMasteredModuleIds] = useState<string[]>([]);
   const [autoSpeakTrigger, setAutoSpeakTrigger] = useState<number>(0);
 
-  // Developer Debug Drawer & Live API Traffic Log State
+  // Developer Options Page & Sandbox State (Lifted into app/page.tsx)
   const [isDebugDrawerOpen, setIsDebugDrawerOpen] = useState<boolean>(false);
+  const [copiedOutgoingJson, setCopiedOutgoingJson] = useState<boolean>(false);
+  const [incomingLessonJsonDraft, setIncomingLessonJsonDraft] = useState<string>(() =>
+    JSON.stringify(DEFAULT_INCOMING_LESSON, null, 2)
+  );
+  const [incomingJsonValidationError, setIncomingJsonValidationError] = useState<string | null>(
+    null
+  );
+  const [incomingJsonAppliedNotice, setIncomingJsonAppliedNotice] = useState<boolean>(false);
+  const [selectedTrafficEndpoint, setSelectedTrafficEndpoint] =
+    useState<EndpointKey>('generate-lesson');
+
   const [apiTrafficLogs, setApiTrafficLogs] = useState<
     Record<EndpointKey, ApiTrafficLogEntry | null>
   >({
@@ -231,13 +271,17 @@ export default function MultimodalTutorApp() {
     []
   );
 
-  // Support ?autostart=1 query param to jump directly to View 2 (Interactive Classroom)
+  // Support ?autostart=1 or ?view=... query params
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const syncFromUrl = () => {
       const params = new URLSearchParams(window.location.search);
-      if (params.get('autostart') === '1') {
+      if (params.get('autostart') === '1' || params.get('view') === 'classroom') {
         setActiveView('classroom');
+      } else if (params.get('view') === 'studio') {
+        setActiveView('studio');
+      } else if (params.get('view') === 'developer') {
+        setActiveView('developer');
       } else if (params.get('view') === 'demo') {
         setActiveView('demo');
       }
@@ -327,6 +371,7 @@ export default function MultimodalTutorApp() {
     setExplicitReadingMinutes(undefined);
     setParseError(null);
     setIncomingLesson(found.lesson);
+    setIncomingLessonJsonDraft(JSON.stringify(found.lesson, null, 2));
     setActiveModuleIndex(0);
     setMasteredModuleIds([]);
 
@@ -359,7 +404,6 @@ export default function MultimodalTutorApp() {
 
   // Endpoint A: POST ${baseUrl}/api/v1/parse-document with multipart/form-data
   const handleUploadFileToBackend = async (file: File) => {
-    // Immediately store the uploaded File and create a browser object URL via URL.createObjectURL(file)
     replaceSourceFileAndBlobUrl(file);
     setParseError(null);
     setIsParsingDocument(true);
@@ -417,7 +461,6 @@ export default function MultimodalTutorApp() {
       const formData = new FormData();
       formData.append('file', file);
 
-      // Do NOT manually set Content-Type header so browser attaches multipart boundary automatically
       const response = await fetch(parseUrl, {
         method: 'POST',
         body: formData,
@@ -452,7 +495,6 @@ export default function MultimodalTutorApp() {
           : undefined
       );
     } catch (err) {
-      // Fallback to local text extraction if remote parse fails, while surfacing status clearly
       const localText = await file.text().catch(() => '');
       const cleanLocal =
         localText.trim().length >= 20
@@ -523,6 +565,7 @@ export default function MultimodalTutorApp() {
         );
 
         setIncomingLesson(synthesized);
+        setIncomingLessonJsonDraft(JSON.stringify(synthesized, null, 2));
         setActiveModuleIndex(0);
         setMasteredModuleIds([]);
         setIsGenerating(false);
@@ -532,7 +575,6 @@ export default function MultimodalTutorApp() {
         return;
       }
 
-      // Live API Mode: Multi-step progress indicator for nvidia/nemotron-3.5-bolt-e4b (15–45s thinking time)
       const stages = [
         'Step 1/4: Sending study material to Nemotron 3.5 Bolt...',
         'Step 2/4: Deep reasoning (enable_thinking=True) on core concepts...',
@@ -578,6 +620,7 @@ export default function MultimodalTutorApp() {
       );
 
       setIncomingLesson(validated.data);
+      setIncomingLessonJsonDraft(JSON.stringify(validated.data, null, 2));
       setActiveModuleIndex(0);
       setMasteredModuleIds([]);
       setIsGenerating(false);
@@ -592,7 +635,7 @@ export default function MultimodalTutorApp() {
       setGenerationStepText('');
       setGenerationError(
         err instanceof Error
-          ? `${err.message} (Tip: You can inspect the payload in the Developer JSON Sandbox or switch to Mock Fallback if offline.)`
+          ? `${err.message} (Tip: You can inspect the payload or switch to Mock Backend Mode in 03 // Developer Options.)`
           : 'Failed to generate lesson from backend endpoint.'
       );
     } finally {
@@ -608,12 +651,46 @@ export default function MultimodalTutorApp() {
 
   const handleApplyCustomLessonFromDrawer = (customLesson: IncomingLessonResponse) => {
     setIncomingLesson(customLesson);
+    setIncomingLessonJsonDraft(JSON.stringify(customLesson, null, 2));
     setActiveModuleIndex(0);
     setMasteredModuleIds([]);
     setActiveView('classroom');
   };
 
+  const handleCopyOutgoingPayloadJson = async () => {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(outgoingPayload, null, 2));
+      setCopiedOutgoingJson(true);
+      window.setTimeout(() => setCopiedOutgoingJson(false), 1800);
+    } catch {
+      // ignore clipboard errors
+    }
+  };
+
+  const handleApplyIncomingJsonOnDeveloperPage = () => {
+    const result = validateIncomingLessonJson(incomingLessonJsonDraft);
+    if (!result.valid) {
+      setIncomingJsonValidationError(result.error);
+      setIncomingJsonAppliedNotice(false);
+      return;
+    }
+    setIncomingJsonValidationError(null);
+    setIncomingLesson(result.data);
+    setActiveModuleIndex(0);
+    setMasteredModuleIds([]);
+    setIncomingJsonAppliedNotice(true);
+    window.setTimeout(() => setIncomingJsonAppliedNotice(false), 2200);
+  };
+
+  const handleResetIncomingJsonOnDeveloperPage = () => {
+    const defaultStr = JSON.stringify(DEFAULT_INCOMING_LESSON, null, 2);
+    setIncomingLessonJsonDraft(defaultStr);
+    setIncomingJsonValidationError(null);
+  };
+
   const activeEmbedUrl = useMemo(() => getYouTubeEmbedUrl(demoYoutubeUrl), [demoYoutubeUrl]);
+  const cleanBackendBase = normalizeBaseUrl(backendBaseUrl);
+  const currentTrafficEntry = apiTrafficLogs[selectedTrafficEndpoint];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F6F2] dark:bg-[#111110] text-zinc-900 dark:text-stone-100">
@@ -624,14 +701,14 @@ export default function MultimodalTutorApp() {
           href="#top"
           onClick={(e) => {
             e.preventDefault();
-            setActiveView('studio');
+            setActiveView('demo');
           }}
           className="text-base font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display whitespace-nowrap shrink-0"
         >
           Socratica Studio
         </a>
 
-        {/* Zone 2: Concise single-line text navigation links (00 // Demo, 01 // Setup Studio, 02 // Classroom) */}
+        {/* Zone 2: 4-Tab Navigation Bar (00 // Demo, 01 // Setup Studio, 02 // Classroom, 03 // Developer Options) */}
         <nav
           aria-label="Primary Workspace Navigation"
           className="flex items-center gap-4 sm:gap-6 text-xs font-mono uppercase tracking-wider text-stone-600 dark:text-stone-400 overflow-x-auto no-scrollbar"
@@ -681,6 +758,21 @@ export default function MultimodalTutorApp() {
           >
             02 // Classroom
           </a>
+          <a
+            id="nav-tab-developer"
+            href="#developer-options"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveView('developer');
+            }}
+            className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
+              activeView === 'developer'
+                ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
+                : ''
+            }`}
+          >
+            03 // Developer Options
+          </a>
         </nav>
 
         {/* Zone 3: 1 primary action */}
@@ -718,94 +810,28 @@ export default function MultimodalTutorApp() {
       {/* Main Workspace Container */}
       <main className={activeView === 'classroom' ? 'flex-1 overflow-hidden' : 'flex-1 pb-16'}>
         {activeView === 'demo' ? (
-          /* VIEW 0: 00 // DEMO — SYSTEM WALKTHROUGH & VIDEO SHOWCASE */
+          /* VIEW 0: 00 // DEMO — CLEAN USER-FACING SYSTEM WALKTHROUGH & VIDEO SHOWCASE */
           <section
             id="demo-showcase-view"
             aria-label="System Walkthrough and Demo Video"
             className="max-w-[1160px] mx-auto px-6 py-8 space-y-6"
           >
             {/* Masthead Header */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 border-b border-stone-300/80 dark:border-zinc-800">
-              <div className="space-y-1.5 max-w-2xl">
-                <p className="uppercase tracking-wider text-[11px] font-mono text-[#D95D39] dark:text-[#E87A5A] font-semibold">
-                  00 // SYSTEM WALKTHROUGH &amp; DEMO
-                </p>
-                <h1
-                  className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display"
-                  style={{ textWrap: 'balance' }}
-                >
-                  Socratica Studio — Multimodal Voice &amp; Concept Classroom
-                </h1>
-                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
-                  Watch the full architectural walkthrough demonstrating document parsing with NVIDIA
-                  Nemotron Parse, adaptive lesson synthesis, and Socratic/Feynman voice checkpoints.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  id="toggle-demo-url-editor-btn"
-                  type="button"
-                  onClick={() => setIsDemoUrlEditorOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-stone-300/90 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] hover:bg-[#EFECE6] dark:hover:bg-[#222220] text-xs font-mono font-medium text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
-                >
-                  <Settings2 className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A]" />
-                  <span>{isDemoUrlEditorOpen ? 'Hide Video URL Config' : 'Configure YouTube URL'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Subtle Collapsible YouTube URL Configuration Bar (Persisted in localStorage) */}
-            {isDemoUrlEditorOpen && (
-              <form
-                onSubmit={handleSaveDemoYoutubeUrl}
-                className="rounded-md border border-stone-300/90 dark:border-zinc-800 bg-[#EFECE6]/70 dark:bg-[#222220] p-4 space-y-2.5"
+            <div className="space-y-1.5 pb-5 border-b border-stone-300/80 dark:border-zinc-800">
+              <p className="uppercase tracking-wider text-[11px] font-mono text-[#D95D39] dark:text-[#E87A5A] font-semibold">
+                00 // SYSTEM WALKTHROUGH &amp; DEMO
+              </p>
+              <h1
+                className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display"
+                style={{ textWrap: 'balance' }}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label
-                    htmlFor="demo-youtube-url-input"
-                    className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100"
-                  >
-                    DEMO YOUTUBE SOURCE URL (WATCH, YOUTU.BE, OR EMBED LINK):
-                  </label>
-                  <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
-                    Resolved Embed: {activeEmbedUrl}
-                  </span>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                  <input
-                    id="demo-youtube-url-input"
-                    type="text"
-                    value={demoUrlInputDraft}
-                    onChange={(e) => setDemoUrlInputDraft(e.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    className="flex-1 min-w-0 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] px-3 py-2 text-xs font-mono text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
-                  />
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      id="save-demo-youtube-url-btn"
-                      type="submit"
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#D95D39] hover:bg-[#C04E2C] text-white text-xs font-mono font-semibold uppercase tracking-wider transition-colors cursor-pointer"
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      <span>{demoUrlSavedNotice ? 'Saved' : 'Apply URL'}</span>
-                    </button>
-
-                    <button
-                      id="reset-demo-youtube-url-btn"
-                      type="button"
-                      onClick={handleResetDemoYoutubeUrl}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] hover:bg-[#F7F6F2] dark:hover:bg-[#111110] text-xs font-mono text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Reset Default</span>
-                    </button>
-                  </div>
-                </div>
-              </form>
-            )}
+                Socratica Studio — Multimodal Voice &amp; Concept Classroom
+              </h1>
+              <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed max-w-3xl">
+                Watch the full architectural walkthrough demonstrating document parsing with NVIDIA
+                Nemotron Parse, adaptive lesson synthesis, and Socratic/Feynman voice checkpoints.
+              </p>
+            </div>
 
             {/* Sharp Architectural 16:9 YouTube Frame */}
             <div className="border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] p-2 sm:p-4 space-y-3">
@@ -917,6 +943,7 @@ export default function MultimodalTutorApp() {
             </div>
           </section>
         ) : activeView === 'studio' ? (
+          /* VIEW 1: 01 // SETUP STUDIO — CLEAN USER-FACING UPLOAD & PEDAGOGICAL SPEC DESK */
           <SetupStudio
             fileName={fileName}
             contentType={contentType}
@@ -930,8 +957,6 @@ export default function MultimodalTutorApp() {
             focusAreas={focusAreas}
             persona={persona}
             outgoingPayload={outgoingPayload}
-            mockBackendMode={mockBackendMode}
-            backendBaseUrl={backendBaseUrl}
             isParsingDocument={isParsingDocument}
             parseError={parseError}
             isGenerating={isGenerating}
@@ -945,11 +970,10 @@ export default function MultimodalTutorApp() {
             onChangeMethodology={setMethodology}
             onToggleFocusArea={handleToggleFocusArea}
             onChangePersona={setPersona}
-            onToggleMockBackend={setMockBackendMode}
-            onChangeBackendBaseUrl={setBackendBaseUrl}
             onGenerateLesson={handleGenerateLesson}
           />
-        ) : (
+        ) : activeView === 'classroom' ? (
+          /* VIEW 2: 02 // CLASSROOM — 3-PANE INTERACTIVE VOICE & CONCEPT WORKSPACE */
           <InteractiveClassroom
             sessionId={sessionId}
             lesson={incomingLesson}
@@ -970,16 +994,458 @@ export default function MultimodalTutorApp() {
             autoSpeakTrigger={autoSpeakTrigger}
             onToggleSseStreaming={setSseStreamingEnabled}
             onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
-            onToggleDebugDrawer={() => setIsDebugDrawerOpen((prev) => !prev)}
+            onToggleDebugDrawer={() => setActiveView('developer')}
             onSelectModule={setActiveModuleIndex}
             onMarkModuleMastered={handleMarkModuleMastered}
             onBackToStudio={() => setActiveView('studio')}
             onLogApiTraffic={handleLogApiTraffic}
           />
+        ) : (
+          /* VIEW 3: 03 // DEVELOPER OPTIONS — UNIFIED TELEMETRY, ENDPOINT & JSON SANDBOX WORKSPACE */
+          <section
+            id="developer-options-view"
+            aria-label="Developer Options and Telemetry Workspace"
+            className="max-w-[1360px] mx-auto px-6 py-8 space-y-6"
+          >
+            {/* Masthead Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 border-b border-stone-300/80 dark:border-zinc-800">
+              <div className="space-y-1.5 max-w-3xl">
+                <p className="uppercase tracking-wider text-[11px] font-mono text-[#D95D39] dark:text-[#E87A5A] font-semibold">
+                  03 // DEVELOPER OPTIONS · TELEMETRY &amp; CONTRACT SANDBOX
+                </p>
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display">
+                  System Configuration, JSON Contracts &amp; Live FastAPI Telemetry
+                </h1>
+                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+                  Configure the demo showcase video URL, switch between the live FastAPI backend and
+                  deterministic mock mode, inspect outgoing request schemas, and test custom lesson
+                  JSON payloads.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('classroom')}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#D95D39] hover:bg-[#C04E2C] text-white text-xs font-mono font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                >
+                  <span>Go to 02 // Classroom →</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Top 2-Column Architectural Grid: Panel 01 (Demo Media) + Panel 02 (Backend Endpoint) */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] divide-y lg:divide-y-0 lg:divide-x divide-stone-300 dark:divide-zinc-800">
+              {/* PANEL 01 — DEMO MEDIA // YOUTUBE URL CONFIGURATION */}
+              <div id="dev-panel-youtube-config" className="p-6 space-y-4 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-2 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                        01
+                      </span>
+                      <Video className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
+                      <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                        DEMO MEDIA // YOUTUBE URL CONFIGURATION
+                      </h2>
+                    </div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 bg-[#EFECE6] dark:bg-[#222220] border border-stone-300/80 dark:border-zinc-700 text-stone-600 dark:text-stone-400">
+                      LOCALSTORAGE PERSISTED
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleSaveDemoYoutubeUrl} className="space-y-3">
+                    <div>
+                      <label
+                        htmlFor="dev-demo-youtube-url-input"
+                        className="block uppercase tracking-wider text-[11px] font-mono text-stone-600 dark:text-stone-400 mb-1.5"
+                      >
+                        YOUTUBE SOURCE LINK (WATCH, YOUTU.BE, EMBED, OR VIDEO ID)
+                      </label>
+                      <input
+                        id="dev-demo-youtube-url-input"
+                        type="text"
+                        value={demoUrlInputDraft}
+                        onChange={(e) => setDemoUrlInputDraft(e.target.value)}
+                        placeholder="https://youtu.be/pQrWq7AJuJY"
+                        className="w-full rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-2 text-xs font-mono text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          id="save-demo-youtube-url-btn"
+                          type="submit"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#D95D39] hover:bg-[#C04E2C] text-white text-xs font-mono font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{demoUrlSavedNotice ? 'Saved to 00 // Demo' : 'Save Video URL'}</span>
+                        </button>
+
+                        <button
+                          id="reset-demo-youtube-url-btn"
+                          type="button"
+                          onClick={handleResetDemoYoutubeUrl}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#EFECE6] dark:bg-[#222220] hover:bg-stone-300/60 dark:hover:bg-zinc-700 text-xs font-mono text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          <span>Reset Default</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setActiveView('demo')}
+                        className="text-xs font-mono font-semibold text-[#D95D39] dark:text-[#E87A5A] hover:underline cursor-pointer"
+                      >
+                        View on 00 // Demo →
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="pt-3 border-t border-stone-300/60 dark:border-zinc-800 text-[11px] font-mono text-stone-500 dark:text-stone-400 truncate">
+                  RESOLVED EMBED: <code className="text-zinc-800 dark:text-stone-200">{activeEmbedUrl}</code>
+                </div>
+              </div>
+
+              {/* PANEL 02 — STUDIO TELEMETRY // BACKEND ENDPOINT */}
+              <div id="dev-panel-backend-endpoint" className="p-6 space-y-4 flex flex-col justify-between">
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-stone-300/80 dark:border-zinc-800">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                        02
+                      </span>
+                      <Server className="w-4 h-4 text-stone-600 dark:text-stone-400 shrink-0" />
+                      <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                        STUDIO TELEMETRY // BACKEND ENDPOINT
+                      </h2>
+                    </div>
+
+                    {/* Execution Mode Selector */}
+                    <div
+                      className="flex items-center border border-stone-300/80 dark:border-zinc-700 rounded-md overflow-hidden bg-[#EFECE6] dark:bg-[#222220]"
+                      role="group"
+                      aria-label="Backend mode selection"
+                    >
+                      <button
+                        id="dev-mode-live-btn"
+                        type="button"
+                        onClick={() => setMockBackendMode(false)}
+                        className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                          !mockBackendMode
+                            ? 'bg-[#D95D39] text-white font-semibold'
+                            : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
+                        }`}
+                      >
+                        Live FastAPI Backend
+                      </button>
+                      <button
+                        id="dev-mode-mock-btn"
+                        type="button"
+                        onClick={() => setMockBackendMode(true)}
+                        className={`px-2.5 py-1 text-[11px] font-mono uppercase tracking-wider border-l border-stone-300/80 dark:border-zinc-700 transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                          mockBackendMode
+                            ? 'bg-[#D95D39] text-white font-semibold'
+                            : 'text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
+                        }`}
+                      >
+                        Mock Backend Mode
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] font-mono">
+                      <label
+                        htmlFor="backend-base-url-input"
+                        className="uppercase tracking-wider text-stone-600 dark:text-stone-400"
+                      >
+                        FASTAPI BASE URL
+                      </label>
+                      <span
+                        className={`font-semibold ${
+                          mockBackendMode
+                            ? 'text-amber-700 dark:text-amber-400'
+                            : 'text-emerald-800 dark:text-emerald-400'
+                        }`}
+                      >
+                        {mockBackendMode ? '● LOCAL DETERMINISTIC MOCK' : '● ONLINE CONTRACT'}
+                      </span>
+                    </div>
+                    <input
+                      id="backend-base-url-input"
+                      type="text"
+                      value={backendBaseUrl}
+                      onChange={(e) => setBackendBaseUrl(e.target.value)}
+                      placeholder="https://tutor-poc-backend.vercel.app"
+                      className="w-full rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#F7F6F2] dark:bg-[#111110] px-3 py-2 text-xs font-mono text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
+                    />
+                  </div>
+                </div>
+
+                <p className="pt-3 border-t border-stone-300/60 dark:border-zinc-800 text-[11px] font-mono text-stone-500 dark:text-stone-400 leading-relaxed">
+                  ROUTES: <code>/api/v1/parse-document</code> · <code>/api/v1/generate-lesson</code>{' '}
+                  · <code>/api/v1/evaluate-checkpoint</code> · <code>/api/v1/tutor-chat</code>
+                </p>
+              </div>
+            </div>
+
+            {/* PANEL 03 — PREVIEW OUTGOING PAYLOAD (POST https://tutor-poc-backend.vercel.app/api/v1/generate-lesson) */}
+            <div
+              id="dev-panel-outgoing-payload"
+              className="border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]"
+            >
+              <div className="px-6 py-3.5 border-b border-stone-300/80 dark:border-zinc-800 bg-[#EFECE6]/70 dark:bg-[#222220] flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                    03
+                  </span>
+                  <Code2 className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
+                  <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                    PREVIEW OUTGOING PAYLOAD (POST {cleanBackendBase || DEFAULT_BACKEND_BASE_URL}
+                    /api/v1/generate-lesson)
+                  </h2>
+                </div>
+
+                <button
+                  id="dev-copy-outgoing-json-btn"
+                  type="button"
+                  onClick={handleCopyOutgoingPayloadJson}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono font-semibold text-zinc-800 dark:text-stone-200 hover:text-zinc-950 dark:hover:text-white border border-stone-300/90 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  {copiedOutgoingJson ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
+                      <span>Copy JSON (Copied)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy JSON</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="p-5 bg-[#111110] text-stone-200 overflow-x-auto max-h-80">
+                <pre className="text-xs font-mono leading-relaxed">
+                  {JSON.stringify(outgoingPayload, null, 2)}
+                </pre>
+              </div>
+            </div>
+
+            {/* PANEL 04 — INCOMING LESSON JSON SANDBOX & TELEMETRY LOGS */}
+            <div
+              id="dev-panel-incoming-sandbox"
+              className="border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] divide-y divide-stone-300/80 dark:divide-zinc-800"
+            >
+              {/* Panel 04 Header */}
+              <div className="px-6 py-3.5 bg-[#EFECE6]/70 dark:bg-[#222220] flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                    04
+                  </span>
+                  <Terminal className="w-4 h-4 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
+                  <h2 className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100">
+                    INCOMING LESSON JSON SANDBOX &amp; TELEMETRY LOGS
+                  </h2>
+                </div>
+
+                {/* SSE Streaming Toggle */}
+                <div className="flex items-center gap-2">
+                  <Radio className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A]" />
+                  <span className="text-xs font-mono text-stone-600 dark:text-stone-300">
+                    Stream Tutor Replies (SSE):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSseStreamingEnabled((prev) => !prev)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-mono font-semibold border transition-colors cursor-pointer ${
+                      sseStreamingEnabled
+                        ? 'text-emerald-800 bg-emerald-950/10 border-emerald-700/30 dark:text-emerald-400'
+                        : 'bg-[#FCFBF9] dark:bg-[#181816] border-stone-300/90 dark:border-zinc-700 text-stone-600 dark:text-stone-400'
+                    }`}
+                  >
+                    {sseStreamingEnabled ? 'ON (/tutor-chat/stream)' : 'OFF (?stream=false)'}
+                  </button>
+                </div>
+              </div>
+
+              {/* 2-Column Split inside Panel 04: Left = Editable Incoming Lesson JSON Sandbox, Right = Live Endpoint Traffic Inspector */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-stone-300/80 dark:divide-zinc-800">
+                {/* Left Column: Editable Incoming Lesson Response JSON Sandbox */}
+                <div className="p-6 space-y-3 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <label
+                          htmlFor="dev-incoming-json-textarea"
+                          className="block uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100"
+                        >
+                          04.A // EDITABLE INCOMING LESSON RESPONSE JSON
+                        </label>
+                        <p className="text-xs text-stone-500 dark:text-stone-400">
+                          Paste or edit a backend <code>IncomingLessonResponse</code> payload and
+                          apply it directly to the Interactive Classroom.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleResetIncomingJsonOnDeveloperPage}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#EFECE6] dark:bg-[#222220] text-xs font-mono text-stone-700 dark:text-stone-300 hover:bg-stone-300/60 transition-colors cursor-pointer shrink-0"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Reset Default JSON</span>
+                      </button>
+                    </div>
+
+                    <textarea
+                      id="dev-incoming-json-textarea"
+                      rows={14}
+                      value={incomingLessonJsonDraft}
+                      onChange={(e) => {
+                        setIncomingLessonJsonDraft(e.target.value);
+                        setIncomingJsonValidationError(null);
+                      }}
+                      spellCheck={false}
+                      className="w-full rounded-md border border-stone-300/90 dark:border-zinc-800 bg-[#111110] p-4 text-xs font-mono text-emerald-300 leading-relaxed focus:outline-none focus:border-[#D95D39]"
+                    />
+
+                    {incomingJsonValidationError && (
+                      <div
+                        role="alert"
+                        className="flex items-start gap-2 p-3 rounded-md border border-rose-600/40 bg-rose-950/10 text-xs text-rose-800 dark:text-rose-300 font-mono"
+                      >
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>Schema Error: {incomingJsonValidationError}</span>
+                      </div>
+                    )}
+
+                    {incomingJsonAppliedNotice && (
+                      <div
+                        role="status"
+                        className="flex items-center gap-2 p-3 rounded-md border border-emerald-700/30 bg-emerald-950/10 text-xs text-emerald-800 dark:text-emerald-400 font-mono"
+                      >
+                        <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        <span>
+                          Incoming Lesson JSON validated and applied to 02 // Classroom!
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 flex flex-wrap items-center justify-end gap-3">
+                    <button
+                      id="dev-apply-incoming-json-btn"
+                      type="button"
+                      onClick={handleApplyIncomingJsonOnDeveloperPage}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] transition-colors cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>Apply Custom Lesson JSON</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Column: Live API Request/Response Traffic Inspector */}
+                <div className="p-6 space-y-4">
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100 flex items-center gap-1.5">
+                        <Activity className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A]" />
+                        <span>04.B // LIVE API REQUEST / RESPONSE INSPECTOR</span>
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {ENDPOINT_INSPECTOR_TABS.map((ep) => {
+                        const entry = apiTrafficLogs[ep.key];
+                        const active = selectedTrafficEndpoint === ep.key;
+                        return (
+                          <button
+                            key={ep.key}
+                            type="button"
+                            onClick={() => setSelectedTrafficEndpoint(ep.key)}
+                            className={`px-2.5 py-1.5 rounded-md text-xs font-mono border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                              active
+                                ? 'bg-[#D95D39] border-[#D95D39] text-white font-semibold'
+                                : 'bg-[#F7F6F2] dark:bg-[#111110] border-stone-300/80 dark:border-zinc-800 text-stone-600 dark:text-stone-400 hover:text-zinc-900 dark:hover:text-stone-100'
+                            }`}
+                          >
+                            <span>{ep.label}</span>
+                            {entry && (
+                              <span className="ml-1.5 text-[10px] opacity-90">
+                                [{entry.status}]
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {currentTrafficEntry ? (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-mono bg-[#F7F6F2] dark:bg-[#111110] px-3.5 py-2 rounded-md border border-stone-300/80 dark:border-zinc-800">
+                        <span className="text-[#D95D39] dark:text-[#E87A5A] font-semibold">
+                          {currentTrafficEntry.method} {currentTrafficEntry.url}
+                        </span>
+                        <span className="text-stone-500 dark:text-stone-400">
+                          Status: {currentTrafficEntry.status} · {currentTrafficEntry.timestamp}
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div>
+                          <h3 className="text-[11px] font-mono font-semibold text-stone-600 dark:text-stone-400 mb-1 uppercase tracking-wider">
+                            LATEST REQUEST PAYLOAD
+                          </h3>
+                          <div className="rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#111110] p-3.5 overflow-auto max-h-44">
+                            <pre className="text-xs font-mono text-stone-200 leading-relaxed">
+                              {JSON.stringify(currentTrafficEntry.requestPayload, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h3 className="text-[11px] font-mono font-semibold text-stone-600 dark:text-stone-400 mb-1 uppercase tracking-wider">
+                            LATEST RESPONSE PAYLOAD
+                          </h3>
+                          <div className="rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#111110] p-3.5 overflow-auto max-h-44">
+                            <pre className="text-xs font-mono text-emerald-300 leading-relaxed">
+                              {JSON.stringify(currentTrafficEntry.responsePayload, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-stone-300/80 dark:border-zinc-800 bg-[#F7F6F2] dark:bg-[#111110] p-8 text-center space-y-2">
+                      <p className="text-xs font-mono font-semibold text-zinc-800 dark:text-stone-200">
+                        No live traffic recorded yet for{' '}
+                        <code className="text-[#D95D39] dark:text-[#E87A5A]">
+                          {selectedTrafficEndpoint}
+                        </code>
+                        .
+                      </p>
+                      <p className="text-xs text-stone-500 dark:text-stone-400">
+                        Trigger the corresponding action in 01 // Setup Studio or 02 // Classroom to
+                        inspect its live JSON request and response payloads here.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </section>
         )}
       </main>
 
-      {/* Developer Debug Drawer Modal (Toggled via Classroom Sidebar) */}
+      {/* Developer Debug Drawer Modal (Optional Modal Fallback) */}
       <DeveloperDebugDrawer
         key={incomingLesson.lesson_id}
         isOpen={isDebugDrawerOpen}
@@ -995,4 +1461,5 @@ export default function MultimodalTutorApp() {
     </div>
   );
 }
+
 
