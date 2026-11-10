@@ -15,12 +15,12 @@ import {
   BookOpen,
   ArrowRight,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import {
   EducationLevel,
   SimplicityLevel,
   TeachingMethodology,
-  FocusArea,
   TutorPersona,
   OutgoingRequestPayload,
   FileMetadataSummary,
@@ -30,34 +30,42 @@ import {
   FOCUS_AREA_OPTIONS,
   PERSONA_OPTIONS,
   PRESET_STUDY_MATERIALS,
+  normalizeBaseUrl,
 } from '@/lib/tutor-contracts';
 
 interface SetupStudioProps {
   fileName: string;
   contentType: string;
   rawText: string;
-  explicitByteSize?: number;
   fileMeta: FileMetadataSummary;
   educationLevel: EducationLevel;
   simplicityLevel: SimplicityLevel;
   methodology: TeachingMethodology;
-  focusAreas: FocusArea[];
+  focusAreas: string[];
   persona: TutorPersona;
   outgoingPayload: OutgoingRequestPayload;
   mockBackendMode: boolean;
-  customBackendUrl: string;
+  backendBaseUrl: string;
+  isParsingDocument: boolean;
+  parseError: string | null;
   isGenerating: boolean;
   generationStepText: string;
   generationError: string | null;
   onSelectPreset: (presetId: string) => void;
-  onUpdateMaterial: (fileName: string, contentType: string, rawText: string, byteSize?: number) => void;
+  onUploadFileToBackend: (file: File) => Promise<void>;
+  onUpdateMaterial: (
+    fileName: string,
+    contentType: string,
+    rawText: string,
+    byteSize?: number
+  ) => void;
   onChangeEducationLevel: (val: EducationLevel) => void;
   onChangeSimplicityLevel: (val: SimplicityLevel) => void;
   onChangeMethodology: (val: TeachingMethodology) => void;
-  onToggleFocusArea: (area: FocusArea) => void;
+  onToggleFocusArea: (area: string) => void;
   onChangePersona: (val: TutorPersona) => void;
   onToggleMockBackend: (val: boolean) => void;
-  onChangeCustomBackendUrl: (val: string) => void;
+  onChangeBackendBaseUrl: (val: string) => void;
   onGenerateLesson: () => void;
 }
 
@@ -73,11 +81,14 @@ export function SetupStudio({
   persona,
   outgoingPayload,
   mockBackendMode,
-  customBackendUrl,
+  backendBaseUrl,
+  isParsingDocument,
+  parseError,
   isGenerating,
   generationStepText,
   generationError,
   onSelectPreset,
+  onUploadFileToBackend,
   onUpdateMaterial,
   onChangeEducationLevel,
   onChangeSimplicityLevel,
@@ -85,7 +96,7 @@ export function SetupStudio({
   onToggleFocusArea,
   onChangePersona,
   onToggleMockBackend,
-  onChangeCustomBackendUrl,
+  onChangeBackendBaseUrl,
   onGenerateLesson,
 }: SetupStudioProps) {
   const [materialTab, setMaterialTab] = useState<'upload' | 'paste'>('upload');
@@ -94,50 +105,15 @@ export function SetupStudio({
   const [copiedJson, setCopiedJson] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleFileSelected = async (file: File) => {
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    const inferredMime =
-      file.type ||
-      (ext === 'pdf'
-        ? 'application/pdf'
-        : ext === 'md'
-        ? 'text/markdown'
-        : ext === 'docx'
-        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        : 'text/plain');
-
-    try {
-      const text = await file.text();
-      // If binary PDF/DOCX contains non-printable bytes, extract readable ASCII lines or summarize
-      const printableRatio =
-        text.length > 0
-          ? text.replace(/[^\x20-\x7E\n\r\t]/g, '').length / text.length
-          : 1;
-      const cleanedText =
-        printableRatio < 0.65
-          ? `Extracted study text from ${file.name} (${file.size} bytes).\n\n${text
-              .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-              .replace(/\s+/g, ' ')
-              .slice(0, 1800)}`
-          : text;
-
-      onUpdateMaterial(file.name, inferredMime, cleanedText, file.size);
-    } catch {
-      onUpdateMaterial(
-        file.name,
-        inferredMime,
-        `Uploaded study material: ${file.name}`,
-        file.size
-      );
-    }
-  };
+  const cleanBase = normalizeBaseUrl(backendBaseUrl);
+  const isTextValidForGeneration = rawText.trim().length >= 20;
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      void handleFileSelected(file);
+      void onUploadFileToBackend(file);
     }
   };
 
@@ -166,8 +142,8 @@ export function SetupStudio({
             Transform Study Material into an Interactive Voice Classroom
           </h1>
           <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-            Upload lecture notes or chapters, calibrate the teaching methodology and explanation
-            depth, and inspect the strict JSON contract before launching your live AI Tutor session.
+            Upload lecture documents or images via NVIDIA Nemotron Parse, calibrate the teaching
+            methodology and explanation depth, and launch your live AI Tutor session.
           </p>
         </div>
 
@@ -184,7 +160,7 @@ export function SetupStudio({
                   key={preset.id}
                   type="button"
                   onClick={() => onSelectPreset(preset.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     isSelected
                       ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300'
                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
@@ -222,7 +198,7 @@ export function SetupStudio({
                   role="tab"
                   aria-selected={materialTab === 'upload'}
                   onClick={() => setMaterialTab('upload')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     materialTab === 'upload'
                       ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -235,7 +211,7 @@ export function SetupStudio({
                   role="tab"
                   aria-selected={materialTab === 'paste'}
                   onClick={() => setMaterialTab('paste')}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     materialTab === 'paste'
                       ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -247,7 +223,7 @@ export function SetupStudio({
             </div>
 
             {materialTab === 'upload' ? (
-              <div className="pt-5 space-y-4">
+              <div className="pt-4 space-y-4">
                 <div
                   onDragOver={(e) => {
                     e.preventDefault();
@@ -255,7 +231,7 @@ export function SetupStudio({
                   }}
                   onDragLeave={() => setIsDragging(false)}
                   onDrop={handleDrop}
-                  className={`rounded-xl border-2 border-dashed p-6 text-center transition-colors ${
+                  className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors ${
                     isDragging
                       ? 'border-indigo-500 bg-indigo-50/40 dark:bg-indigo-950/30'
                       : 'border-slate-300 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-950/40 hover:border-indigo-400 dark:hover:border-indigo-600'
@@ -265,55 +241,80 @@ export function SetupStudio({
                     ref={fileInputRef}
                     id="study-file-input"
                     type="file"
-                    accept=".pdf,.txt,.docx,.md"
+                    accept=".pdf,.png,.jpg,.jpeg,.txt,.md,.docx"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) void handleFileSelected(file);
+                      if (file) void onUploadFileToBackend(file);
                     }}
                     className="sr-only"
                   />
-                  <Upload className="w-7 h-7 text-indigo-600 dark:text-indigo-400 mx-auto mb-2.5" />
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                    Drag & drop your study file here, or{' '}
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="text-indigo-600 dark:text-indigo-400 underline underline-offset-2 font-semibold hover:text-indigo-500"
-                    >
-                      browse files
-                    </button>
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Supports .pdf, .txt, .docx, or .md lecture notes and textbook chapters
-                  </p>
+
+                  {isParsingDocument ? (
+                    <div className="py-2 flex flex-col items-center justify-center space-y-2">
+                      <Loader2 className="w-6 h-6 text-indigo-600 dark:text-indigo-400 animate-spin" />
+                      <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                        Parsing document via NVIDIA Nemotron Parse...
+                      </p>
+                      <p className="text-xs font-mono text-slate-500 dark:text-slate-400">
+                        POST {cleanBase || 'local'}/api/v1/parse-document
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-5 h-5 text-indigo-600 dark:text-indigo-400 mx-auto mb-1.5" />
+                      <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                        Drag & drop your study file here, or{' '}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-indigo-600 dark:text-indigo-400 underline underline-offset-2 font-semibold hover:text-indigo-500 cursor-pointer"
+                        >
+                          browse files
+                        </button>
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Supports .pdf, .png, .jpg, .jpeg, .txt, .md, or .docx via Nemotron Parse
+                      </p>
+                    </>
+                  )}
                 </div>
+
+                {parseError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 p-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-800 dark:text-amber-300"
+                  >
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{parseError}</span>
+                  </div>
+                )}
 
                 {/* Extracted Text Preview Snippet */}
                 <div>
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-1">
                     <label htmlFor="extracted-preview-textarea" className="font-medium">
                       Extracted Source Text Preview (Editable):
                     </label>
                     <button
                       type="button"
                       onClick={() => setMaterialTab('paste')}
-                      className="text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0 cursor-pointer"
                     >
                       Expand editor
                     </button>
                   </div>
                   <textarea
                     id="extracted-preview-textarea"
-                    rows={5}
+                    rows={3}
                     value={rawText}
                     onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
-                    className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     placeholder="Extracted text from your file will appear here..."
                   />
                 </div>
               </div>
             ) : (
-              <div className="pt-5 space-y-3">
+              <div className="pt-4 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label
@@ -346,6 +347,8 @@ export function SetupStudio({
                       <option value="application/pdf">application/pdf</option>
                       <option value="text/markdown">text/markdown</option>
                       <option value="text/plain">text/plain</option>
+                      <option value="image/png">image/png</option>
+                      <option value="image/jpeg">image/jpeg</option>
                       <option value="application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                         application/docx
                       </option>
@@ -358,11 +361,11 @@ export function SetupStudio({
                     htmlFor="raw-study-text-input"
                     className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1"
                   >
-                    Paste Raw Study Material / Lecture Transcript
+                    Paste Raw Study Material / Lecture Transcript (Min 20 characters)
                   </label>
                   <textarea
                     id="raw-study-text-input"
-                    rows={8}
+                    rows={7}
                     value={rawText}
                     onChange={(e) => onUpdateMaterial(fileName, contentType, e.target.value)}
                     placeholder="Paste your chapter text, formulas, or lecture notes here..."
@@ -381,7 +384,9 @@ export function SetupStudio({
                 </span>
               </div>
               <div className="flex items-center gap-2 font-mono tabular-nums text-slate-500 dark:text-slate-400">
-                <span>{fileMeta.formattedSize}</span>
+                <span>
+                  {fileMeta.pageCount} {fileMeta.pageCount === 1 ? 'page' : 'pages'}
+                </span>
                 <span aria-hidden="true">·</span>
                 <span>{fileMeta.wordCount} words</span>
                 <span aria-hidden="true">·</span>
@@ -390,8 +395,8 @@ export function SetupStudio({
             </div>
           </div>
 
-          {/* Backend Simulation & Endpoint Card */}
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4">
+          {/* Backend Execution Mode & Live FastAPI Base URL */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-3.5">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <Server className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
@@ -400,7 +405,7 @@ export function SetupStudio({
                 </h3>
               </div>
 
-              {/* Segmented Toggle for Mock Backend Mode */}
+              {/* Segmented Toggle: Live API Mode (default) vs Mock Backend Mode */}
               <div
                 className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg"
                 role="group"
@@ -408,61 +413,70 @@ export function SetupStudio({
               >
                 <button
                   type="button"
-                  onClick={() => onToggleMockBackend(true)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
-                    mockBackendMode
-                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
-                  }`}
-                >
-                  Mock Backend Mode
-                </button>
-                <button
-                  type="button"
                   onClick={() => onToggleMockBackend(false)}
-                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 ${
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     !mockBackendMode
                       ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                       : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
                   }`}
                 >
-                  Custom / Live API
+                  Live API Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onToggleMockBackend(true)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                    mockBackendMode
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  Mock Fallback
                 </button>
               </div>
             </div>
 
-            {mockBackendMode ? (
-              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Simulates <code className="font-mono text-indigo-600 dark:text-indigo-400">POST /api/v1/generate-lesson</code> in-browser with deterministic multi-step synthesis so you can test the entire multimodal lesson and Web Speech experience immediately.
-              </p>
-            ) : (
+            {!mockBackendMode ? (
               <div className="space-y-2">
-                <label
-                  htmlFor="custom-backend-url-input"
-                  className="block text-xs font-medium text-slate-700 dark:text-slate-300"
-                >
-                  Target Endpoint URL (POST)
-                </label>
+                <div className="flex items-center justify-between text-xs">
+                  <label
+                    htmlFor="backend-base-url-input"
+                    className="font-medium text-slate-700 dark:text-slate-300"
+                  >
+                    FastAPI Backend Base URL
+                  </label>
+                  <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    ● Connected Contract
+                  </span>
+                </div>
                 <input
-                  id="custom-backend-url-input"
+                  id="backend-base-url-input"
                   type="text"
-                  value={customBackendUrl}
-                  onChange={(e) => onChangeCustomBackendUrl(e.target.value)}
-                  placeholder="/api/v1/generate-lesson or https://your-api.com/v1/generate-lesson"
+                  value={backendBaseUrl}
+                  onChange={(e) => onChangeBackendBaseUrl(e.target.value)}
+                  placeholder="https://tutor-poc-backend.vercel.app"
                   className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Sends the strict <code className="font-mono">OutgoingRequestPayload</code> JSON via HTTP POST and expects an <code className="font-mono">IncomingLessonResponse</code> JSON response.
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Calls <code className="font-mono">/api/v1/parse-document</code>,{' '}
+                  <code className="font-mono">/api/v1/generate-lesson</code>,{' '}
+                  <code className="font-mono">/api/v1/evaluate-checkpoint</code>, and{' '}
+                  <code className="font-mono">/api/v1/tutor-chat</code> on the configured host.
                 </p>
               </div>
+            ) : (
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Simulates all 5 FastAPI endpoints locally in-browser with deterministic responses so
+                you can test offline or compare against live backend payloads.
+              </p>
             )}
           </div>
         </div>
 
         {/* Right Column (7 cols): 2. Pedagogical Configuration Controls & 3. Payload Inspector */}
-        <div className="lg:col-span-7 space-y-6">
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-6">
-            <div className="flex items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
+        <div className="lg:col-span-7 space-y-5">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-5">
+            <div className="flex items-center justify-between gap-4 pb-3.5 border-b border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
                 <Sliders className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                 <h2 className="text-base font-semibold text-slate-900 dark:text-white font-display">
@@ -475,7 +489,7 @@ export function SetupStudio({
             </div>
 
             {/* Row 1: Education Level & Tutor Voice Persona Selects */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label
                   htmlFor="education-level-select"
@@ -487,11 +501,11 @@ export function SetupStudio({
                   id="education-level-select"
                   value={educationLevel}
                   onChange={(e) => onChangeEducationLevel(e.target.value as EducationLevel)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {EDUCATION_LEVEL_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                      {opt.label} ({opt.value})
                     </option>
                   ))}
                 </select>
@@ -508,7 +522,7 @@ export function SetupStudio({
                   id="tutor-persona-select"
                   value={persona}
                   onChange={(e) => onChangePersona(e.target.value as TutorPersona)}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {PERSONA_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -520,7 +534,7 @@ export function SetupStudio({
             </div>
 
             {/* Row 2: Explanation Simplicity / Pacing Slider (1-5) */}
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 space-y-2.5">
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label
                   htmlFor="simplicity-slider"
@@ -552,7 +566,7 @@ export function SetupStudio({
                 <span>5: Rigorous Academic Depth</span>
               </div>
 
-              <p className="text-xs text-slate-600 dark:text-slate-400 pt-1">
+              <p className="text-xs text-slate-600 dark:text-slate-400">
                 {SIMPLICITY_LABELS[simplicityLevel].description}
               </p>
             </div>
@@ -576,7 +590,7 @@ export function SetupStudio({
                       role="radio"
                       aria-checked={active}
                       onClick={() => onChangeMethodology(item.value)}
-                      className={`text-left p-3.5 rounded-xl border transition-all ${
+                      className={`text-left p-3 rounded-xl border transition-all cursor-pointer ${
                         active
                           ? 'border-indigo-600 dark:border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/50 text-slate-900 dark:text-white ring-1 ring-indigo-600/30'
                           : 'border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/40 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
@@ -603,7 +617,7 @@ export function SetupStudio({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                  Learning Focus Areas (Multi-Select)
+                  Learning Focus Areas (Multi-Select · Required by FastAPI Schema)
                 </span>
                 <span className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
                   {focusAreas.length} selected
@@ -622,7 +636,7 @@ export function SetupStudio({
                       type="button"
                       aria-pressed={isSelected}
                       onClick={() => onToggleFocusArea(area.value)}
-                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+                      className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                         isSelected
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                           : 'bg-slate-50 dark:bg-slate-950 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
@@ -644,15 +658,17 @@ export function SetupStudio({
           {/* 3. Payload Inspector & Action Card */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
             {/* Collapsible "Preview Outgoing JSON" Drawer Trigger */}
-            <div className="px-6 py-4 bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
+            <div className="px-5 py-3.5 bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-4">
               <button
                 type="button"
                 aria-expanded={isJsonPreviewOpen}
                 onClick={() => setIsJsonPreviewOpen((prev) => !prev)}
-                className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                className="flex items-center gap-2.5 text-xs font-semibold text-slate-800 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
               >
                 <Code2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span>Preview Outgoing JSON (POST /api/v1/generate-lesson)</span>
+                <span>
+                  Preview Outgoing JSON (POST {cleanBase || ''}/api/v1/generate-lesson)
+                </span>
                 {isJsonPreviewOpen ? (
                   <ChevronUp className="w-4 h-4 text-slate-400" />
                 ) : (
@@ -663,7 +679,7 @@ export function SetupStudio({
               <button
                 type="button"
                 onClick={handleCopyJson}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors cursor-pointer whitespace-nowrap shrink-0"
               >
                 {copiedJson ? (
                   <>
@@ -688,7 +704,18 @@ export function SetupStudio({
             )}
 
             {/* Primary CTA & Multi-Step Loading State */}
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-3.5">
+              {!isTextValidForGeneration && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-lg border border-amber-200 dark:border-amber-800/80 bg-amber-50 dark:bg-amber-950/40 text-xs text-amber-800 dark:text-amber-300"
+                >
+                  Source text must be at least 20 characters before calling{' '}
+                  <code className="font-mono">/api/v1/generate-lesson</code> (currently{' '}
+                  {rawText.trim().length} chars).
+                </div>
+              )}
+
               {generationError && (
                 <div
                   role="alert"
@@ -701,17 +728,19 @@ export function SetupStudio({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-0.5">
                   <p className="text-xs font-medium text-slate-800 dark:text-slate-200">
-                    Ready to compile interactive concept modules
+                    {isGenerating
+                      ? 'NVIDIA Nemotron 3.5 Bolt (enable_thinking=True) is structuring your lesson...'
+                      : 'Ready to compile interactive concept modules'}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
-                    Session: {outgoingPayload.session_id.slice(0, 13)}... · Mode:{' '}
-                    {mockBackendMode ? 'Mock Contract Engine' : customBackendUrl}
+                    Session: {outgoingPayload.session_id.slice(0, 13)}... · Target:{' '}
+                    {mockBackendMode ? 'Mock Engine' : cleanBase || 'Local API'}
                   </p>
                 </div>
 
                 <button
                   type="button"
-                  disabled={isGenerating || !rawText.trim()}
+                  disabled={isGenerating || isParsingDocument || !isTextValidForGeneration}
                   onClick={onGenerateLesson}
                   className="inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 transition-all shadow-sm cursor-pointer whitespace-nowrap shrink-0"
                 >

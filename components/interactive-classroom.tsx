@@ -11,21 +11,27 @@ import {
   MicOff,
   Send,
   CheckCircle2,
-  HelpCircle,
   Lightbulb,
   ArrowRight,
   ArrowLeft,
-  Sparkles,
   BookOpen,
-  MessageSquare,
+  Loader2,
+  Radio,
 } from 'lucide-react';
 import {
   IncomingLessonResponse,
   LessonModule,
   TutorConfigPayload,
-  EvaluationResult,
+  EvaluateCheckpointResponse,
+  QuickActionType,
+  ChatHistoryTurn,
+  EndpointKey,
+  buildEvaluateCheckpointPayload,
+  buildTutorChatPayload,
   evaluateUnderstandingResponse,
+  extractTextFromSseChunk,
   generateContextualTutorReply,
+  normalizeBaseUrl,
   PERSONA_OPTIONS,
 } from '@/lib/tutor-contracts';
 import { ConceptSimulationDiagram } from './concept-simulation-diagram';
@@ -39,23 +45,43 @@ export interface TranscriptMessage {
 }
 
 interface InteractiveClassroomProps {
+  sessionId: string;
   lesson: IncomingLessonResponse;
   tutorConfig: TutorConfigPayload;
   activeModuleIndex: number;
   masteredModuleIds: string[];
+  mockBackendMode: boolean;
+  backendBaseUrl: string;
+  sseStreamingEnabled: boolean;
+  autoSpeakTrigger: number;
+  onToggleSseStreaming: (enabled: boolean) => void;
   onSelectModule: (index: number) => void;
   onMarkModuleMastered: (moduleId: string) => void;
   onBackToStudio: () => void;
+  onLogApiTraffic: (
+    endpoint: EndpointKey,
+    url: string,
+    status: number | 'pending' | 'mock' | 'error',
+    requestPayload: unknown,
+    responsePayload: unknown
+  ) => void;
 }
 
 export function InteractiveClassroom({
+  sessionId,
   lesson,
   tutorConfig,
   activeModuleIndex,
   masteredModuleIds,
+  mockBackendMode,
+  backendBaseUrl,
+  sseStreamingEnabled,
+  autoSpeakTrigger,
+  onToggleSseStreaming,
   onSelectModule,
   onMarkModuleMastered,
   onBackToStudio,
+  onLogApiTraffic,
 }: InteractiveClassroomProps) {
   const activeModule: LessonModule =
     lesson.modules[activeModuleIndex] || lesson.modules[0];
@@ -75,8 +101,9 @@ export function InteractiveClassroom({
   // Understanding Checkpoint State per Module
   const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, string>>({});
   const [checkpointEvaluations, setCheckpointEvaluations] = useState<
-    Record<string, EvaluationResult>
+    Record<string, EvaluateCheckpointResponse>
   >({});
+  const [isEvaluatingCheckpoint, setIsEvaluatingCheckpoint] = useState(false);
   const [showHint, setShowHint] = useState(false);
 
   // Synchronized Chat & Transcript Stream State
@@ -91,45 +118,26 @@ export function InteractiveClassroom({
     {
       id: `narration-${lesson.modules[0]?.module_id || 'mod_1'}`,
       sender: 'tutor',
-      tag: `Module 1 Narration`,
+      tag: 'Module 1 Narration',
       text: lesson.modules[0]?.spoken_narration || '',
       timestamp: 'Just now',
     },
   ]);
   const [chatInput, setChatInput] = useState('');
+  const [isTutorReplying, setIsTutorReplying] = useState(false);
+  const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
 
   // Refs for timers and Web Speech
   const keyPointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fallbackSpeechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<any>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const msgSeqRef = useRef<number>(1);
 
   const currentAnswer = checkpointAnswers[activeModule.module_id] || '';
   const currentEvaluation = checkpointEvaluations[activeModule.module_id] || null;
   const isCurrentMastered = masteredModuleIds.includes(activeModule.module_id);
-
-  // Clear timers on unmount
-  useEffect(() => {
-    return () => {
-      if (keyPointTimerRef.current) clearInterval(keyPointTimerRef.current);
-      if (fallbackSpeechTimerRef.current) clearTimeout(fallbackSpeechTimerRef.current);
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-      }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, []);
-
-  // Scroll chat stream smoothly when transcript updates
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, [transcript.length]);
+  const cleanBase = normalizeBaseUrl(backendBaseUrl);
 
   const stopSpeechInternal = () => {
     if (keyPointTimerRef.current) {
@@ -147,7 +155,6 @@ export function InteractiveClassroom({
     setIsPaused(false);
   };
 
-  // Speak text aloud via window.speechSynthesis + synchronize key_points highlighting
   const speakTextAloud = (
     textToSpeak: string,
     options?: { cycleKeyPoints?: boolean; fixedPointIndex?: number | null }
@@ -169,7 +176,6 @@ export function InteractiveClassroom({
     setIsSpeaking(true);
     setIsPaused(false);
 
-    // Estimate speaking duration for environments where speechSynthesis onend doesn't fire (e.g. headless browser)
     const words = textToSpeak.trim().split(/\s+/).length;
     const estDurationMs = Math.min(
       14000,
@@ -206,16 +212,48 @@ export function InteractiveClassroom({
           setIsPaused(false);
         };
 
-        utterance.onerror = () => {
-          // Keep visual speaking state until fallback timer finishes if headless environment lacks OS audio output
-        };
-
         window.speechSynthesis.speak(utterance);
       } catch {
         // Fallback timer handles visual completion
       }
     }
   };
+
+  // Clear timers on unmount
+  useEffect(() => {
+    return () => {
+      if (keyPointTimerRef.current) clearInterval(keyPointTimerRef.current);
+      if (fallbackSpeechTimerRef.current) clearTimeout(fallbackSpeechTimerRef.current);
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
+  // When transitioning from View 1 -> View 2 after lesson generation, speak welcome_spoken_intro + module 1 narration
+  useEffect(() => {
+    if (autoSpeakTrigger <= 0) return;
+    const combinedIntro = `${lesson.welcome_spoken_intro} ${
+      lesson.modules[0]?.spoken_narration || ''
+    }`;
+    const timer = window.setTimeout(() => {
+      speakTextAloud(combinedIntro, { cycleKeyPoints: true });
+    }, 50);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSpeakTrigger]);
+
+  // Scroll chat stream smoothly when transcript updates
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [transcript.length]);
 
   const handleTogglePlayPause = () => {
     if (isSpeaking && !isPaused) {
@@ -247,7 +285,6 @@ export function InteractiveClassroom({
       return;
     }
 
-    // Start narrating current module
     handleReplayExplanation();
   };
 
@@ -267,11 +304,13 @@ export function InteractiveClassroom({
     sender: 'tutor' | 'student',
     tag: string,
     text: string
-  ) => {
+  ): string => {
+    msgSeqRef.current += 1;
+    const id = `msg-${msgSeqRef.current}`;
     setTranscript((prev) => [
       ...prev,
       {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        id,
         sender,
         tag,
         text,
@@ -281,9 +320,15 @@ export function InteractiveClassroom({
         }),
       },
     ]);
+    return id;
   };
 
-  // Switch module & automatically queue spoken narration in transcript
+  const updateTranscriptById = (id: string, newText: string) => {
+    setTranscript((prev) =>
+      prev.map((m) => (m.id === id ? { ...m, text: newText } : m))
+    );
+  };
+
   const handleSwitchModule = (newIndex: number) => {
     if (newIndex < 0 || newIndex >= lesson.modules.length) return;
     stopSpeechInternal();
@@ -301,10 +346,10 @@ export function InteractiveClassroom({
     }
   };
 
-  // Submit Understanding Checkpoint Answer
-  const handleSubmitCheckpoint = (overrideAnswer?: string) => {
+  // Endpoint C: POST ${baseUrl}/api/v1/evaluate-checkpoint
+  const handleSubmitCheckpoint = async (overrideAnswer?: string) => {
     const answerText = (overrideAnswer ?? currentAnswer).trim();
-    if (!answerText) return;
+    if (!answerText || isEvaluatingCheckpoint) return;
 
     if (overrideAnswer !== undefined) {
       setCheckpointAnswers((prev) => ({
@@ -315,36 +360,315 @@ export function InteractiveClassroom({
 
     appendTranscript('student', 'Concept Check Answer', answerText);
 
-    const evaluation = evaluateUnderstandingResponse(
-      answerText,
-      activeModule.understanding_check
-    );
-    setCheckpointEvaluations((prev) => ({
-      ...prev,
-      [activeModule.module_id]: evaluation,
-    }));
+    const requestPayload = buildEvaluateCheckpointPayload({
+      sessionId,
+      module: activeModule,
+      userResponse: answerText,
+      tutorConfig,
+    });
 
-    if (evaluation.passed) {
-      onMarkModuleMastered(activeModule.module_id);
+    const targetUrl = `${cleanBase}/api/v1/evaluate-checkpoint`;
+    setIsEvaluatingCheckpoint(true);
+
+    try {
+      let evalData: EvaluateCheckpointResponse;
+
+      if (mockBackendMode) {
+        evalData = evaluateUnderstandingResponse(
+          answerText,
+          activeModule.understanding_check
+        );
+        onLogApiTraffic(
+          'evaluate-checkpoint',
+          'mock://api/v1/evaluate-checkpoint',
+          'mock',
+          requestPayload,
+          evalData
+        );
+      } else {
+        onLogApiTraffic(
+          'evaluate-checkpoint',
+          targetUrl,
+          'pending',
+          requestPayload,
+          { status: 'Evaluating learner explanation...' }
+        );
+
+        const response = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errText.slice(0, 160)}`);
+        }
+
+        const raw = (await response.json()) as EvaluateCheckpointResponse;
+        evalData = {
+          passed: Boolean(raw.passed),
+          mastery_score:
+            typeof raw.mastery_score === 'number' ? raw.mastery_score : raw.passed ? 100 : 40,
+          concepts_matched: Array.isArray(raw.concepts_matched) ? raw.concepts_matched : [],
+          concepts_missed: Array.isArray(raw.concepts_missed) ? raw.concepts_missed : [],
+          spoken_feedback:
+            raw.spoken_feedback ||
+            raw.written_summary ||
+            'Evaluation complete.',
+          written_summary:
+            raw.written_summary ||
+            raw.spoken_feedback ||
+            'Evaluation complete.',
+          follow_up_hint: raw.follow_up_hint || '',
+        };
+
+        onLogApiTraffic(
+          'evaluate-checkpoint',
+          targetUrl,
+          response.status,
+          requestPayload,
+          evalData
+        );
+      }
+
+      setCheckpointEvaluations((prev) => ({
+        ...prev,
+        [activeModule.module_id]: evalData,
+      }));
+
+      if (evalData.passed) {
+        onMarkModuleMastered(activeModule.module_id);
+      }
+
+      appendTranscript(
+        'tutor',
+        'Checkpoint Evaluation',
+        `${evalData.written_summary}${
+          evalData.spoken_feedback && evalData.spoken_feedback !== evalData.written_summary
+            ? `\n\n"${evalData.spoken_feedback}"`
+            : ''
+        }`
+      );
+      speakTextAloud(evalData.spoken_feedback, { fixedPointIndex: null });
+    } catch (err) {
+      // Graceful fallback to local evaluation if live endpoint fails or is unreachable
+      const fallbackEval = evaluateUnderstandingResponse(
+        answerText,
+        activeModule.understanding_check
+      );
+      onLogApiTraffic(
+        'evaluate-checkpoint',
+        targetUrl,
+        'error',
+        requestPayload,
+        {
+          error: err instanceof Error ? err.message : 'Network error',
+          fallback_used: fallbackEval,
+        }
+      );
+
+      setCheckpointEvaluations((prev) => ({
+        ...prev,
+        [activeModule.module_id]: fallbackEval,
+      }));
+
+      if (fallbackEval.passed) {
+        onMarkModuleMastered(activeModule.module_id);
+      }
+
+      appendTranscript('tutor', 'Checkpoint Evaluation (Fallback)', fallbackEval.spoken_feedback);
+      speakTextAloud(fallbackEval.spoken_feedback, { fixedPointIndex: null });
+    } finally {
+      setIsEvaluatingCheckpoint(false);
     }
-
-    appendTranscript('tutor', 'Understanding Feedback', evaluation.tutorFeedbackSpoken);
-    speakTextAloud(evaluation.tutorFeedbackSpoken, { fixedPointIndex: null });
   };
 
-  // Handle Chat / Quick Action Submission
-  const handleSendChatMessage = (overridePrompt?: string) => {
+  // Endpoint D & E: POST ${baseUrl}/api/v1/tutor-chat?stream=false OR POST ${baseUrl}/api/v1/tutor-chat/stream
+  const handleSendChatMessage = async (
+    overridePrompt?: string,
+    quickAction: QuickActionType = 'freeform'
+  ) => {
     const promptText = (overridePrompt ?? chatInput).trim();
-    if (!promptText) return;
+    if (!promptText || isTutorReplying) return;
     if (!overridePrompt) setChatInput('');
 
-    appendTranscript('student', 'Live Question', promptText);
+    // Build chat_history strictly using "user" or "assistant" roles from existing transcript
+    const chatHistory: ChatHistoryTurn[] = transcript.slice(-8).map((item) => ({
+      role: item.sender === 'student' ? 'user' : 'assistant',
+      content: item.text,
+    }));
 
-    const { writtenReply, spokenReply, highlightedPointIndex } =
-      generateContextualTutorReply(promptText, activeModule, tutorConfig);
+    appendTranscript('student', quickAction === 'freeform' ? 'Live Question' : `Quick Action (${quickAction})`, promptText);
 
-    appendTranscript('tutor', 'Tutor Response', writtenReply);
-    speakTextAloud(spokenReply, { fixedPointIndex: highlightedPointIndex });
+    const requestPayload = buildTutorChatPayload({
+      sessionId,
+      module: activeModule,
+      tutorConfig,
+      quickAction,
+      userMessage: promptText,
+      chatHistory,
+    });
+
+    setIsTutorReplying(true);
+
+    try {
+      if (mockBackendMode) {
+        const mockReply = generateContextualTutorReply(
+          promptText,
+          activeModule,
+          tutorConfig,
+          quickAction
+        );
+        onLogApiTraffic(
+          'tutor-chat',
+          'mock://api/v1/tutor-chat?stream=false',
+          'mock',
+          requestPayload,
+          mockReply
+        );
+
+        appendTranscript('tutor', 'Tutor Response', mockReply.written_markdown);
+        setSuggestedFollowUps(mockReply.suggested_follow_ups || []);
+        speakTextAloud(mockReply.spoken_reply, {
+          fixedPointIndex:
+            typeof mockReply.highlight_key_point_index === 'number'
+              ? mockReply.highlight_key_point_index
+              : null,
+        });
+        return;
+      }
+
+      // Endpoint E: SSE Streaming Mode when sseStreamingEnabled === true
+      if (sseStreamingEnabled) {
+        const streamUrl = `${cleanBase}/api/v1/tutor-chat/stream`;
+        onLogApiTraffic('tutor-chat', streamUrl, 'pending', requestPayload, {
+          stream: 'Connecting to SSE stream...',
+        });
+
+        const response = await fetch(streamUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestPayload),
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error(`SSE Stream HTTP ${response.status}`);
+        }
+
+        const msgId = appendTranscript('tutor', 'Live SSE Stream', '...');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = '';
+        let finalStructured: Partial<{
+          spoken_reply: string;
+          highlight_key_point_index: number | null;
+          suggested_follow_ups: string[];
+        }> = {};
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunkStr = decoder.decode(value, { stream: true });
+          const parsedChunk = extractTextFromSseChunk(chunkStr);
+          if (parsedChunk.tokens) {
+            accumulatedText += parsedChunk.tokens;
+            updateTranscriptById(msgId, accumulatedText);
+          }
+          if (parsedChunk.structuredPayload) {
+            finalStructured = { ...finalStructured, ...parsedChunk.structuredPayload };
+          }
+        }
+
+        const finalSpoken =
+          finalStructured.spoken_reply || accumulatedText.replace(/[*#_`]/g, '');
+        if (Array.isArray(finalStructured.suggested_follow_ups)) {
+          setSuggestedFollowUps(finalStructured.suggested_follow_ups);
+        }
+        onLogApiTraffic('tutor-chat', streamUrl, 200, requestPayload, {
+          streamed_text: accumulatedText,
+          ...finalStructured,
+        });
+
+        speakTextAloud(finalSpoken, {
+          fixedPointIndex:
+            typeof finalStructured.highlight_key_point_index === 'number'
+              ? finalStructured.highlight_key_point_index
+              : null,
+        });
+        return;
+      }
+
+      // Endpoint D: Standard JSON Mode (POST ${baseUrl}/api/v1/tutor-chat?stream=false)
+      const jsonUrl = `${cleanBase}/api/v1/tutor-chat?stream=false`;
+      onLogApiTraffic('tutor-chat', jsonUrl, 'pending', requestPayload, {
+        status: 'Awaiting tutor reply...',
+      });
+
+      const response = await fetch(jsonUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestPayload),
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errText.slice(0, 160)}`);
+      }
+
+      const data = await response.json();
+      const spokenReply =
+        typeof data.spoken_reply === 'string' && data.spoken_reply
+          ? data.spoken_reply
+          : typeof data.written_markdown === 'string'
+          ? data.written_markdown.replace(/[*#_`]/g, '')
+          : 'Here is a breakdown of the concept.';
+      const writtenMarkdown =
+        typeof data.written_markdown === 'string' && data.written_markdown
+          ? data.written_markdown
+          : spokenReply;
+      const highlightIdx =
+        typeof data.highlight_key_point_index === 'number' &&
+        data.highlight_key_point_index >= 0 &&
+        data.highlight_key_point_index < activeModule.key_points.length
+          ? data.highlight_key_point_index
+          : null;
+      const followUps = Array.isArray(data.suggested_follow_ups)
+        ? data.suggested_follow_ups
+        : [];
+
+      onLogApiTraffic('tutor-chat', jsonUrl, response.status, requestPayload, data);
+
+      appendTranscript('tutor', 'Tutor Response', writtenMarkdown);
+      setSuggestedFollowUps(followUps);
+      speakTextAloud(spokenReply, { fixedPointIndex: highlightIdx });
+    } catch (err) {
+      // Fallback to local contextual reply so the student experience never breaks
+      const fallbackReply = generateContextualTutorReply(
+        promptText,
+        activeModule,
+        tutorConfig,
+        quickAction
+      );
+      onLogApiTraffic(
+        'tutor-chat',
+        `${cleanBase}/api/v1/tutor-chat`,
+        'error',
+        requestPayload,
+        {
+          error: err instanceof Error ? err.message : 'Network error',
+          fallback_used: fallbackReply,
+        }
+      );
+
+      appendTranscript('tutor', 'Tutor Response (Fallback)', fallbackReply.written_markdown);
+      setSuggestedFollowUps(fallbackReply.suggested_follow_ups);
+      speakTextAloud(fallbackReply.spoken_reply, {
+        fixedPointIndex: fallbackReply.highlight_key_point_index,
+      });
+    } finally {
+      setIsTutorReplying(false);
+    }
   };
 
   // Microphone / SpeechRecognition with graceful iframe simulation fallback
@@ -389,10 +713,10 @@ export function InteractiveClassroom({
             ...prev,
             [activeModule.module_id]: simulatedUtterance,
           }));
-          handleSubmitCheckpoint(simulatedUtterance);
+          void handleSubmitCheckpoint(simulatedUtterance);
         } else {
           setChatInput(simulatedUtterance);
-          handleSendChatMessage(simulatedUtterance);
+          void handleSendChatMessage(simulatedUtterance, 'freeform');
         }
         setIsListening(false);
         setActiveMicTarget(null);
@@ -440,9 +764,9 @@ export function InteractiveClassroom({
           setActiveMicTarget(null);
           setMicStatusNote(null);
           if (target === 'checkpoint') {
-            handleSubmitCheckpoint(capturedTranscript);
+            void handleSubmitCheckpoint(capturedTranscript);
           } else {
-            handleSendChatMessage(capturedTranscript);
+            void handleSendChatMessage(capturedTranscript, 'freeform');
           }
         }
       };
@@ -457,6 +781,12 @@ export function InteractiveClassroom({
     (masteredModuleIds.length / Math.max(1, lesson.modules.length)) * 100
   );
 
+  const quickActionItems: { label: string; action: QuickActionType }[] = [
+    { label: 'Explain this simpler', action: 'explain_simpler' },
+    { label: 'Give me a real-world example', action: 'real_world_example' },
+    { label: 'Test me on this', action: 'test_me' },
+  ];
+
   return (
     <section className="max-w-[1440px] mx-auto px-6 py-6">
       {/* Top Progress Stepper & Chapter Metadata Header */}
@@ -467,7 +797,7 @@ export function InteractiveClassroom({
               <button
                 type="button"
                 onClick={onBackToStudio}
-                className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline font-sans font-medium"
+                className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline font-sans font-medium cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Setup Studio
@@ -577,7 +907,7 @@ export function InteractiveClassroom({
               </button>
             </div>
 
-            {/* 1. The Big Idea (TL;DR) Callout Box (Full hairline border, no border-l-4) */}
+            {/* 1. The Big Idea (TL;DR) Callout Box */}
             <div className="rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/60 dark:bg-indigo-950/30 p-5">
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
@@ -628,7 +958,7 @@ export function InteractiveClassroom({
                     </p>
                   </div>
                   <div className="mt-3 pt-2 border-t border-emerald-200/60 dark:border-emerald-800/50 flex items-center justify-between text-[11px] text-emerald-700 dark:text-emerald-300">
-                    <span>Pedagogy: {tutorConfig.methodology.replace('_', ' ')}</span>
+                    <span>Pedagogy: {tutorConfig.methodology}</span>
                     <span>Simplicity: {tutorConfig.simplicity_level}/5</span>
                   </div>
                 </div>
@@ -642,7 +972,7 @@ export function InteractiveClassroom({
               />
             </div>
 
-            {/* 3. Key Breakdown Cards (Dynamically Highlighted During Narration) */}
+            {/* 3. Key Breakdown Cards (Dynamically Highlighted During Narration or Tutor Chat Reply) */}
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-white font-display">
@@ -697,7 +1027,7 @@ export function InteractiveClassroom({
             </div>
           </div>
 
-          {/* 4. The "True Understanding" Gate (Interactive Checkpoint) */}
+          {/* 4. The "True Understanding" Gate (Interactive Checkpoint -> Endpoint C) */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center gap-2">
@@ -715,7 +1045,7 @@ export function InteractiveClassroom({
                   </span>
                 ) : (
                   <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                    Respond via Voice or Text to unlock mastery
+                    POST /api/v1/evaluate-checkpoint
                   </span>
                 )}
               </div>
@@ -734,7 +1064,7 @@ export function InteractiveClassroom({
                       fixedPointIndex: null,
                     })
                   }
-                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
                   Read Prompt Aloud
@@ -744,7 +1074,6 @@ export function InteractiveClassroom({
                 &ldquo;{activeModule.understanding_check.question_spoken}&rdquo;
               </p>
 
-              {/* Expected Concepts Rubric Indicators & Hint Toggle */}
               <div className="pt-2 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
                 <div>
                   <span>Target concepts: </span>
@@ -755,7 +1084,7 @@ export function InteractiveClassroom({
                 <button
                   type="button"
                   onClick={() => setShowHint((prev) => !prev)}
-                  className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline font-medium whitespace-nowrap shrink-0"
+                  className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 hover:underline font-medium cursor-pointer whitespace-nowrap shrink-0"
                 >
                   <Lightbulb className="w-3.5 h-3.5" />
                   {showHint ? 'Hide Hint' : 'Need a Hint?'}
@@ -784,14 +1113,14 @@ export function InteractiveClassroom({
                     const sample = `If the step size is way too high, our hiker will ${
                       activeModule.understanding_check.expected_concepts[0] || 'overshoot'
                     } the lowest valley and ${
-                      activeModule.understanding_check.expected_concepts[1] || 'bounce'
+                      activeModule.understanding_check.expected_concepts[1] || 'diverge'
                     } across the walls, missing the minimum.`;
                     setCheckpointAnswers((prev) => ({
                       ...prev,
                       [activeModule.module_id]: sample,
                     }));
                   }}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap shrink-0"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer whitespace-nowrap shrink-0"
                 >
                   Fill Sample Explanation
                 </button>
@@ -837,19 +1166,29 @@ export function InteractiveClassroom({
                 <div className="flex items-center gap-2.5">
                   <button
                     type="button"
-                    disabled={!currentAnswer.trim()}
-                    onClick={() => handleSubmitCheckpoint()}
+                    disabled={!currentAnswer.trim() || isEvaluatingCheckpoint}
+                    onClick={() => void handleSubmitCheckpoint()}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white transition-colors cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Verify Understanding</span>
+                    {isEvaluatingCheckpoint ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Evaluating...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Verify Understanding</span>
+                      </>
+                    )}
                   </button>
 
                   {activeModuleIndex < lesson.modules.length - 1 && (
                     <button
                       type="button"
+                      disabled={!isCurrentMastered}
                       onClick={() => handleSwitchModule(activeModuleIndex + 1)}
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                     >
                       <span>Next Module</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -859,29 +1198,88 @@ export function InteractiveClassroom({
               </div>
             </div>
 
-            {/* Checkpoint Evaluation Feedback Banner */}
+            {/* Checkpoint Evaluation Feedback Banner (Endpoint C Schema) */}
             {currentEvaluation && (
               <div
                 role="status"
-                className={`p-4 rounded-xl border ${
+                className={`p-4 rounded-xl border space-y-3 ${
                   currentEvaluation.passed
                     ? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-950/30 text-slate-900 dark:text-slate-100'
                     : 'border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-950/30 text-slate-900 dark:text-slate-100'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
                     {currentEvaluation.passed
                       ? 'Mastery Confirmed — True Understanding Gate Passed'
                       : 'Keep Refining Your Explanation'}
                   </span>
                   <span className="text-xs font-mono tabular-nums font-semibold">
-                    Score: {currentEvaluation.scorePercent}%
+                    Mastery Score: {currentEvaluation.mastery_score}%
                   </span>
                 </div>
-                <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
-                  {currentEvaluation.tutorFeedbackSpoken}
+
+                <p className="text-xs leading-relaxed text-slate-800 dark:text-slate-200">
+                  {currentEvaluation.written_summary}
                 </p>
+
+                {currentEvaluation.spoken_feedback &&
+                  currentEvaluation.spoken_feedback !== currentEvaluation.written_summary && (
+                    <p className="text-xs italic text-slate-600 dark:text-slate-400">
+                      Spoken Feedback: &ldquo;{currentEvaluation.spoken_feedback}&rdquo;
+                    </p>
+                  )}
+
+                {/* Matched & Missed Concepts Breakdown */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="text-xs">
+                    <span className="font-semibold text-emerald-700 dark:text-emerald-300 block mb-1">
+                      Concepts Matched ({currentEvaluation.concepts_matched.length}):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentEvaluation.concepts_matched.length > 0 ? (
+                        currentEvaluation.concepts_matched.map((c) => (
+                          <span
+                            key={c}
+                            className="px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 font-mono text-[11px]"
+                          >
+                            ✓ {c}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-500">None detected yet</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-xs">
+                    <span className="font-semibold text-amber-700 dark:text-amber-300 block mb-1">
+                      Concepts Missed ({currentEvaluation.concepts_missed.length}):
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentEvaluation.concepts_missed.length > 0 ? (
+                        currentEvaluation.concepts_missed.map((c) => (
+                          <span
+                            key={c}
+                            className="px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 font-mono text-[11px]"
+                          >
+                            ○ {c}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
+                          All target concepts covered!
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {currentEvaluation.follow_up_hint && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 pt-1 border-t border-amber-200/60 dark:border-amber-800/60">
+                    Follow-Up Hint: {currentEvaluation.follow_up_hint}
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -904,7 +1302,6 @@ export function InteractiveClassroom({
                         : 'bg-slate-700 scale-100'
                     }`}
                   >
-                    {/* Live Waveform Bars inside Orb */}
                     <div className="flex items-end gap-0.5 h-3.5">
                       {[0, 1, 2, 3].map((bar) => (
                         <span
@@ -929,6 +1326,8 @@ export function InteractiveClassroom({
                   <p className="text-xs font-mono text-indigo-300">
                     {isListening
                       ? 'Listening to your microphone...'
+                      : isTutorReplying
+                      ? 'Thinking & generating reply...'
                       : isSpeaking
                       ? 'Speaking explanation aloud...'
                       : isPaused
@@ -1003,6 +1402,27 @@ export function InteractiveClassroom({
               </button>
             </div>
 
+            {/* Endpoint E Toggle: Stream Tutor Replies (SSE) */}
+            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Radio className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>Stream Tutor Replies (SSE)</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={sseStreamingEnabled}
+                onClick={() => onToggleSseStreaming(!sseStreamingEnabled)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  sseStreamingEnabled
+                    ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {sseStreamingEnabled ? 'SSE ON (/stream)' : 'JSON (?stream=false)'}
+              </button>
+            </div>
+
             {micStatusNote && (
               <p className="text-[11px] font-mono text-amber-300 bg-slate-800/90 px-2.5 py-1.5 rounded border border-slate-700">
                 {micStatusNote}
@@ -1011,7 +1431,7 @@ export function InteractiveClassroom({
           </div>
 
           {/* 2. Synchronized Chat & Transcript Stream */}
-          <div className="p-4 space-y-3 overflow-y-auto max-h-[380px] min-h-[290px] bg-slate-50/50 dark:bg-slate-950/40">
+          <div className="p-4 space-y-3 overflow-y-auto max-h-[380px] min-h-[280px] bg-slate-50/50 dark:bg-slate-950/40">
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 pb-1 border-b border-slate-200/70 dark:border-slate-800">
               <span>Synchronized Voice & Text Transcript</span>
               <span>{transcript.length} entries</span>
@@ -1035,7 +1455,7 @@ export function InteractiveClassroom({
                   </div>
 
                   <div
-                    className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed max-w-[92%] ${
+                    className={`rounded-xl px-3.5 py-2.5 text-xs leading-relaxed max-w-[92%] whitespace-pre-wrap ${
                       isTutor
                         ? 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200'
                         : 'bg-indigo-600 text-white'
@@ -1049,22 +1469,41 @@ export function InteractiveClassroom({
             <div ref={transcriptEndRef} />
           </div>
 
-          {/* 3. Contextual Quick-Action Chips & Dual-Mode Input Bar */}
+          {/* 3. Contextual Quick-Action Chips, Suggested Follow-Ups & Dual-Mode Input Bar */}
           <div className="p-4 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 space-y-3">
+            {/* Suggested Follow-Ups from Backend Response */}
+            {suggestedFollowUps.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400 block">
+                  Suggested Follow-Ups:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {suggestedFollowUps.map((followUp, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      disabled={isTutorReplying}
+                      onClick={() => void handleSendChatMessage(followUp, 'freeform')}
+                      className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer truncate max-w-full"
+                    >
+                      {followUp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Contextual Quick-Action Buttons */}
             <div className="flex flex-wrap gap-1.5">
-              {[
-                'Explain this simpler',
-                'Give me a real-world example',
-                'Test me on this',
-              ].map((quickPrompt) => (
+              {quickActionItems.map((item) => (
                 <button
-                  key={quickPrompt}
+                  key={item.action}
                   type="button"
-                  onClick={() => handleSendChatMessage(quickPrompt)}
+                  disabled={isTutorReplying}
+                  onClick={() => void handleSendChatMessage(item.label, item.action)}
                   className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 border border-slate-200/80 dark:border-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  {quickPrompt}
+                  {item.label}
                 </button>
               ))}
             </div>
@@ -1073,7 +1512,7 @@ export function InteractiveClassroom({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleSendChatMessage();
+                void handleSendChatMessage(undefined, 'freeform');
               }}
               className="flex items-center gap-2"
             >
@@ -1112,11 +1551,15 @@ export function InteractiveClassroom({
 
               <button
                 type="submit"
-                disabled={!chatInput.trim()}
+                disabled={!chatInput.trim() || isTutorReplying}
                 aria-label="Send message to tutor"
                 className="p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white transition-colors cursor-pointer shrink-0"
               >
-                <Send className="w-4 h-4" />
+                {isTutorReplying ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
               </button>
             </form>
           </div>

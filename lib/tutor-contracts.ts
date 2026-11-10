@@ -2,23 +2,32 @@ export type EducationLevel =
   | 'elementary'
   | 'high_school'
   | 'undergraduate'
-  | 'graduate_phd'
-  | 'industry_professional';
+  | 'graduate'
+  | 'professional';
 
 export type SimplicityLevel = 1 | 2 | 3 | 4 | 5;
 
-export type TeachingMethodology = 'socratic' | 'feynman' | 'direct_structured';
+export type TeachingMethodology = 'socratic' | 'feynman' | 'direct';
 
 export type FocusArea =
   | 'core_intuition'
   | 'real_world_examples'
   | 'exam_prep_edge_cases'
-  | 'step_by_step_derivations';
+  | 'step_by_step_derivations'
+  | string;
 
 export type TutorPersona =
   | 'warm_encouraging'
   | 'crisp_academic'
   | 'casual_peer';
+
+export type QuickActionType =
+  | 'explain_simpler'
+  | 'real_world_example'
+  | 'test_me'
+  | 'freeform';
+
+export const DEFAULT_BACKEND_BASE_URL = 'https://tutor-poc-backend.vercel.app';
 
 export interface SourceMaterialPayload {
   file_name: string;
@@ -30,10 +39,21 @@ export interface TutorConfigPayload {
   education_level: EducationLevel;
   simplicity_level: SimplicityLevel;
   methodology: TeachingMethodology;
-  focus_areas: FocusArea[];
+  focus_areas: string[];
   persona: TutorPersona;
 }
 
+// Endpoint A: POST /api/v1/parse-document Response
+export interface ParseDocumentResponse {
+  file_name: string;
+  content_type: string;
+  page_count: number;
+  word_count: number;
+  estimated_reading_time_minutes: number;
+  raw_text_extracted: string;
+}
+
+// Endpoint B: POST /api/v1/generate-lesson Request
 export interface OutgoingRequestPayload {
   session_id: string;
   source_material: SourceMaterialPayload;
@@ -61,6 +81,7 @@ export interface LessonModule {
   understanding_check: UnderstandingCheck;
 }
 
+// Endpoint B: POST /api/v1/generate-lesson Response
 export interface IncomingLessonResponse {
   lesson_id: string;
   chapter_title: string;
@@ -69,21 +90,83 @@ export interface IncomingLessonResponse {
   modules: LessonModule[];
 }
 
+// Endpoint C: POST /api/v1/evaluate-checkpoint Request
+export interface EvaluateCheckpointRequest {
+  session_id: string;
+  module_id: string;
+  module_title: string;
+  core_concept: string;
+  question_asked: string;
+  expected_concepts: string[];
+  user_response: string;
+  tutor_config: TutorConfigPayload;
+}
+
+// Endpoint C: POST /api/v1/evaluate-checkpoint Response
+export interface EvaluateCheckpointResponse {
+  passed: boolean;
+  mastery_score: number;
+  concepts_matched: string[];
+  concepts_missed: string[];
+  spoken_feedback: string;
+  written_summary: string;
+  follow_up_hint: string;
+}
+
+// Endpoint D & E: POST /api/v1/tutor-chat Request
+export interface ChatHistoryTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ActiveModuleContextPayload {
+  title: string;
+  core_concept: string;
+  key_points: string[];
+}
+
+export interface TutorChatRequest {
+  session_id: string;
+  active_module_id: string;
+  active_module_context: ActiveModuleContextPayload;
+  tutor_config: TutorConfigPayload;
+  quick_action: QuickActionType;
+  user_message: string;
+  chat_history: ChatHistoryTurn[];
+}
+
+// Endpoint D: POST /api/v1/tutor-chat?stream=false Response
+export interface TutorChatResponse {
+  spoken_reply: string;
+  written_markdown: string;
+  highlight_key_point_index: number | null;
+  suggested_follow_ups: string[];
+}
+
 export interface FileMetadataSummary {
   fileName: string;
   contentType: string;
   byteSize: number;
   formattedSize: string;
+  pageCount: number;
   wordCount: number;
   estimatedReadingMinutes: number;
 }
 
-export interface EvaluationResult {
-  passed: boolean;
-  matchedConcepts: string[];
-  missingConcepts: string[];
-  scorePercent: number;
-  tutorFeedbackSpoken: string;
+export type EndpointKey =
+  | 'parse-document'
+  | 'generate-lesson'
+  | 'evaluate-checkpoint'
+  | 'tutor-chat';
+
+export interface ApiTrafficLogEntry {
+  endpoint: EndpointKey;
+  method: 'POST';
+  url: string;
+  timestamp: string;
+  status: number | 'pending' | 'mock' | 'error';
+  requestPayload: unknown;
+  responsePayload: unknown;
 }
 
 export const SIMPLICITY_LABELS: Record<
@@ -119,8 +202,8 @@ export const EDUCATION_LEVEL_OPTIONS: {
   { value: 'elementary', label: 'Elementary' },
   { value: 'high_school', label: 'High School' },
   { value: 'undergraduate', label: 'Undergraduate' },
-  { value: 'graduate_phd', label: 'Graduate / PhD' },
-  { value: 'industry_professional', label: 'Industry Professional' },
+  { value: 'graduate', label: 'Graduate / PhD' },
+  { value: 'professional', label: 'Industry Professional' },
 ];
 
 export const METHODOLOGY_OPTIONS: {
@@ -139,14 +222,14 @@ export const METHODOLOGY_OPTIONS: {
     subtitle: 'Teaches a chunk, then asks you to explain it back simply.',
   },
   {
-    value: 'direct_structured',
+    value: 'direct',
     label: 'Direct & Structured',
     subtitle: 'Clear step-by-step breakdown with quick quizzes.',
   },
 ];
 
 export const FOCUS_AREA_OPTIONS: {
-  value: FocusArea;
+  value: string;
   label: string;
 }[] = [
   { value: 'core_intuition', label: 'Core Intuition' },
@@ -383,17 +466,84 @@ When vector dimension d_k is large, dot products grow large in magnitude, pushin
   },
 ];
 
+// Strip trailing slashes from baseUrl so we never form `//api/v1/...`
+export function normalizeBaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/\/+$/, '');
+}
+
+// Normalize any legacy or user-supplied enum strings into strict FastAPI backend enum values
+export function normalizeTutorConfig(config: {
+  education_level: string;
+  simplicity_level: number;
+  methodology: string;
+  focus_areas?: string[];
+  persona: string;
+}): TutorConfigPayload {
+  const eduMap: Record<string, EducationLevel> = {
+    elementary: 'elementary',
+    high_school: 'high_school',
+    undergraduate: 'undergraduate',
+    graduate: 'graduate',
+    graduate_phd: 'graduate',
+    professional: 'professional',
+    industry_professional: 'professional',
+  };
+
+  const methMap: Record<string, TeachingMethodology> = {
+    socratic: 'socratic',
+    feynman: 'feynman',
+    direct: 'direct',
+    direct_structured: 'direct',
+  };
+
+  const personaMap: Record<string, TutorPersona> = {
+    warm_encouraging: 'warm_encouraging',
+    crisp_academic: 'crisp_academic',
+    casual_peer: 'casual_peer',
+  };
+
+  const clampedSimplicity = Math.max(
+    1,
+    Math.min(5, Math.round(Number(config.simplicity_level) || 2))
+  ) as SimplicityLevel;
+
+  const cleanFocus =
+    Array.isArray(config.focus_areas) && config.focus_areas.filter(Boolean).length > 0
+      ? config.focus_areas.filter(Boolean)
+      : ['core_intuition'];
+
+  return {
+    education_level: eduMap[config.education_level] || 'undergraduate',
+    simplicity_level: clampedSimplicity,
+    methodology: methMap[config.methodology] || 'feynman',
+    focus_areas: cleanFocus,
+    persona: personaMap[config.persona] || 'warm_encouraging',
+  };
+}
+
 export function estimateFileMetadata(
   fileName: string,
   contentType: string,
   rawText: string,
-  explicitByteSize?: number
+  options?: {
+    explicitByteSize?: number;
+    explicitPageCount?: number;
+    explicitWordCount?: number;
+    explicitReadingMinutes?: number;
+  }
 ): FileMetadataSummary {
   const trimmed = rawText.trim();
-  const words = trimmed ? trimmed.split(/\s+/).length : 0;
+  const computedWords = trimmed ? trimmed.split(/\s+/).length : 0;
+  const wordCount =
+    typeof options?.explicitWordCount === 'number' && options.explicitWordCount >= 0
+      ? options.explicitWordCount
+      : computedWords;
+
   const byteSize =
-    typeof explicitByteSize === 'number' && explicitByteSize > 0
-      ? explicitByteSize
+    typeof options?.explicitByteSize === 'number' && options.explicitByteSize > 0
+      ? options.explicitByteSize
       : new TextEncoder().encode(rawText).length;
 
   let formattedSize = `${byteSize} B`;
@@ -403,15 +553,26 @@ export function estimateFileMetadata(
     formattedSize = `${(byteSize / 1024).toFixed(1)} KB`;
   }
 
-  // Average academic study reading rate ~180 words per minute (minimum 1 min if non-empty)
-  const estimatedReadingMinutes = words === 0 ? 0 : Math.max(1, Math.ceil(words / 180));
+  const pageCount =
+    typeof options?.explicitPageCount === 'number' && options.explicitPageCount >= 1
+      ? options.explicitPageCount
+      : Math.max(1, Math.ceil(wordCount / 350));
+
+  const estimatedReadingMinutes =
+    typeof options?.explicitReadingMinutes === 'number' &&
+    options.explicitReadingMinutes >= 1
+      ? options.explicitReadingMinutes
+      : wordCount === 0
+      ? 0
+      : Math.max(1, Math.ceil(wordCount / 180));
 
   return {
-    fileName: fileName || 'untitled_notes.txt',
+    fileName: fileName || 'study_notes.txt',
     contentType: contentType || 'text/plain',
     byteSize,
     formattedSize,
-    wordCount: words,
+    pageCount,
+    wordCount,
     estimatedReadingMinutes,
   };
 }
@@ -421,26 +582,85 @@ export function buildOutgoingPayload(params: {
   fileName: string;
   contentType: string;
   rawText: string;
-  educationLevel: EducationLevel;
-  simplicityLevel: SimplicityLevel;
-  methodology: TeachingMethodology;
-  focusAreas: FocusArea[];
-  persona: TutorPersona;
+  educationLevel: EducationLevel | string;
+  simplicityLevel: SimplicityLevel | number;
+  methodology: TeachingMethodology | string;
+  focusAreas: string[];
+  persona: TutorPersona | string;
 }): OutgoingRequestPayload {
+  const normalizedConfig = normalizeTutorConfig({
+    education_level: params.educationLevel,
+    simplicity_level: params.simplicityLevel,
+    methodology: params.methodology,
+    focus_areas: params.focusAreas,
+    persona: params.persona,
+  });
+
   return {
     session_id: params.sessionId.trim() || 'uuid-v4-string',
     source_material: {
-      file_name: params.fileName.trim() || 'study_material.txt',
+      file_name: params.fileName.trim() || 'study_notes.txt',
       content_type: params.contentType.trim() || 'text/plain',
       raw_text_extracted: params.rawText,
     },
-    tutor_config: {
-      education_level: params.educationLevel,
-      simplicity_level: params.simplicityLevel,
-      methodology: params.methodology,
-      focus_areas: params.focusAreas.length > 0 ? params.focusAreas : ['core_intuition'],
-      persona: params.persona,
+    tutor_config: normalizedConfig,
+  };
+}
+
+export function buildEvaluateCheckpointPayload(params: {
+  sessionId: string;
+  module: LessonModule;
+  userResponse: string;
+  tutorConfig: TutorConfigPayload;
+}): EvaluateCheckpointRequest {
+  return {
+    session_id: params.sessionId.trim() || 'uuid-v4-string',
+    module_id: params.module.module_id,
+    module_title: params.module.title,
+    core_concept: params.module.core_concept,
+    question_asked: params.module.understanding_check.question_spoken,
+    expected_concepts:
+      params.module.understanding_check.expected_concepts.length > 0
+        ? params.module.understanding_check.expected_concepts
+        : ['core_intuition'],
+    user_response: params.userResponse.trim(),
+    tutor_config: normalizeTutorConfig(params.tutorConfig),
+  };
+}
+
+export function buildTutorChatPayload(params: {
+  sessionId: string;
+  module: LessonModule;
+  tutorConfig: TutorConfigPayload;
+  quickAction: QuickActionType;
+  userMessage: string;
+  chatHistory: ChatHistoryTurn[];
+}): TutorChatRequest {
+  // Strictly allow only "user" or "assistant" roles in chat_history
+  const sanitizedHistory: ChatHistoryTurn[] = params.chatHistory
+    .filter(
+      (turn) =>
+        (turn.role === 'user' || turn.role === 'assistant') &&
+        typeof turn.content === 'string' &&
+        turn.content.trim().length > 0
+    )
+    .map((turn) => ({
+      role: turn.role === 'user' ? 'user' : 'assistant',
+      content: turn.content,
+    }));
+
+  return {
+    session_id: params.sessionId.trim() || 'uuid-v4-string',
+    active_module_id: params.module.module_id,
+    active_module_context: {
+      title: params.module.title,
+      core_concept: params.module.core_concept,
+      key_points: params.module.key_points,
     },
+    tutor_config: normalizeTutorConfig(params.tutorConfig),
+    quick_action: params.quickAction,
+    user_message: params.userMessage.trim(),
+    chat_history: sanitizedHistory,
   };
 }
 
@@ -523,23 +743,24 @@ export function validateIncomingLessonJson(
 export function evaluateUnderstandingResponse(
   userAnswer: string,
   check: UnderstandingCheck
-): EvaluationResult {
+): EvaluateCheckpointResponse {
   const normalized = userAnswer.toLowerCase().trim();
   if (!normalized) {
     return {
       passed: false,
-      matchedConcepts: [],
-      missingConcepts: [...check.expected_concepts],
-      scorePercent: 0,
-      tutorFeedbackSpoken:
+      mastery_score: 0,
+      concepts_matched: [],
+      concepts_missed: [...check.expected_concepts],
+      spoken_feedback:
         'Please share a brief explanation via voice or text so we can lock in this concept.',
+      written_summary: 'No explanation was provided yet.',
+      follow_up_hint: check.hint,
     };
   }
 
   const matched: string[] = [];
   const missing: string[] = [];
 
-  // Synonym / stem awareness so natural student answers match cleanly
   const synonymMap: Record<string, string[]> = {
     overshoot: ['overshoot', 'jump past', 'leap past', 'step too far', 'too big', 'past the valley', 'jump over'],
     diverge: ['diverge', 'explode', 'unstable', 'never settle', 'fly off', 'get worse'],
@@ -571,31 +792,39 @@ export function evaluateUnderstandingResponse(
   }
 
   const wordCount = normalized.split(/\s+/).length;
-  // Pass if they hit at least 1 expected concept OR provide a thoughtful response (>= 6 words)
   const passed = matched.length > 0 || wordCount >= 6;
   const rawScore =
     check.expected_concepts.length > 0
       ? Math.round((matched.length / check.expected_concepts.length) * 100)
       : 100;
-  const scorePercent = passed ? Math.max(75, Math.min(100, rawScore + 50)) : Math.max(25, rawScore);
+  const masteryScore = passed
+    ? Math.max(75, Math.min(100, rawScore + 50))
+    : Math.max(25, rawScore);
 
-  let tutorFeedbackSpoken = '';
+  let spokenFeedback = '';
+  let writtenSummary = '';
   if (matched.length >= 2) {
-    tutorFeedbackSpoken = `Spot on! You nailed the core intuition—specifically how ${matched.slice(0, 2).join(' and ')} govern the behavior here. Marking this module as Mastered!`;
+    spokenFeedback = `Spot on! You nailed the core intuition—specifically how ${matched.slice(0, 2).join(' and ')} govern the behavior here. Marking this module as Mastered!`;
+    writtenSummary = `Strong conceptual mastery demonstrated (${masteryScore}%). You accurately connected ${matched.join(', ')} to the underlying mechanism.`;
   } else if (matched.length === 1) {
-    tutorFeedbackSpoken = `Great intuition mentioning "${matched[0]}"! You also want to keep in mind ${missing.slice(0, 2).join(' and ')}. Module mastered—let's keep that momentum going!`;
+    spokenFeedback = `Great intuition mentioning "${matched[0]}"! You also want to keep in mind ${missing.slice(0, 2).join(' and ')}. Module mastered—let's keep that momentum going!`;
+    writtenSummary = `Passed checkpoint (${masteryScore}%). Matched core idea "${matched[0]}", with room to incorporate ${missing.slice(0, 2).join(', ')}.`;
   } else if (passed) {
-    tutorFeedbackSpoken = `Good effort putting that in your own words! To sharpen the mental model even further, connect your explanation to ${check.expected_concepts.slice(0, 2).join(' and ')}. Module marked as Mastered!`;
+    spokenFeedback = `Good effort putting that in your own words! To sharpen the mental model even further, connect your explanation to ${check.expected_concepts.slice(0, 2).join(' and ')}. Module marked as Mastered!`;
+    writtenSummary = `Thoughtful explanation in your own words (${masteryScore}%). Review the target terminology (${check.expected_concepts.slice(0, 2).join(', ')}) to solidify exam readiness.`;
   } else {
-    tutorFeedbackSpoken = `You're on the right track, but try expanding a bit more! Hint: ${check.hint}`;
+    spokenFeedback = `You're on the right track, but try expanding a bit more! Hint: ${check.hint}`;
+    writtenSummary = `Explanation needs a bit more detail (${masteryScore}%). Try addressing how ${missing.slice(0, 2).join(' and ')} come into play.`;
   }
 
   return {
     passed,
-    matchedConcepts: matched,
-    missingConcepts: missing,
-    scorePercent,
-    tutorFeedbackSpoken,
+    mastery_score: masteryScore,
+    concepts_matched: matched,
+    concepts_missed: missing,
+    spoken_feedback: spokenFeedback,
+    written_summary: writtenSummary,
+    follow_up_hint: passed ? '' : check.hint,
   };
 }
 
@@ -605,12 +834,10 @@ export function synthesizeAdaptiveLessonFromPayload(
   const raw = payload.source_material.raw_text_extracted.trim();
   const lower = raw.toLowerCase();
 
-  // Check if it matches our Transformer preset
   if (lower.includes('self-attention') || lower.includes('queries, keys')) {
     return adaptLessonToConfig(PRESET_STUDY_MATERIALS[1].lesson, payload.tutor_config);
   }
 
-  // Check if it matches Default Backpropagation preset
   if (
     lower.includes('backpropagation') ||
     lower.includes('gradient descent') ||
@@ -619,7 +846,6 @@ export function synthesizeAdaptiveLessonFromPayload(
     return adaptLessonToConfig(DEFAULT_INCOMING_LESSON, payload.tutor_config);
   }
 
-  // Otherwise dynamically build a tailored multi-module lesson from the user's custom text!
   const paragraphs = raw
     .split(/\n\s*\n/)
     .map((p) => p.trim())
@@ -643,7 +869,6 @@ export function synthesizeAdaptiveLessonFromPayload(
     const coreConcept =
       sentences[0] || 'Understanding the structural mechanism and underlying intuition.';
 
-    // Extract keywords (> 5 chars) for expected_concepts
     const words = Array.from(
       new Set(
         chunk
@@ -682,7 +907,7 @@ export function synthesizeAdaptiveLessonFromPayload(
 
   return adaptLessonToConfig(
     {
-      lesson_id: `lesson-${ payload.session_id.slice(0, 6) }`,
+      lesson_id: `lesson-${payload.session_id.slice(0, 6)}`,
       chapter_title: chapterTitle,
       estimated_duration_minutes: Math.max(10, modules.length * 5),
       welcome_spoken_intro: `Welcome! I have structured "${chapterTitle}" into ${modules.length} interactive concept modules tailored for a ${payload.tutor_config.education_level.replace('_', ' ')} level.`,
@@ -696,7 +921,6 @@ export function adaptLessonToConfig(
   baseLesson: IncomingLessonResponse,
   config: TutorConfigPayload
 ): IncomingLessonResponse {
-  // Keep exact default schema intact if matching default config so strict contract inspection matches 1:1
   if (
     baseLesson.lesson_id === 'lesson-001' &&
     config.education_level === 'undergraduate' &&
@@ -723,38 +947,65 @@ export function adaptLessonToConfig(
 export function generateContextualTutorReply(
   userPrompt: string,
   activeModule: LessonModule,
-  config: TutorConfigPayload
-): { writtenReply: string; spokenReply: string; highlightedPointIndex: number | null } {
+  config: TutorConfigPayload,
+  quickAction: QuickActionType = 'freeform'
+): TutorChatResponse {
   const lower = userPrompt.toLowerCase();
 
-  if (lower.includes('simpler') || lower.includes('eli5')) {
-    const reply = `Let's strip away the math for "${activeModule.title}": ${activeModule.visual_analogy.everyday_parallel} In short, ${activeModule.core_concept.toLowerCase()}`;
+  if (quickAction === 'explain_simpler' || lower.includes('simpler') || lower.includes('eli5')) {
+    const reply = `Let's strip away the math for **${activeModule.title}**: ${activeModule.visual_analogy.everyday_parallel} In short, ${activeModule.core_concept.toLowerCase()}`;
     return {
-      writtenReply: reply,
-      spokenReply: reply,
-      highlightedPointIndex: 0,
+      spoken_reply: reply.replace(/\*\*/g, ''),
+      written_markdown: reply,
+      highlight_key_point_index: 0,
+      suggested_follow_ups: [
+        'Give me a real-world example of this',
+        'What happens in an extreme edge case?',
+        'Test me on this concept',
+      ],
     };
   }
 
-  if (lower.includes('real-world') || lower.includes('example') || lower.includes('analogy')) {
-    const reply = `Here is a concrete real-world parallel for ${activeModule.visual_analogy.target_concept}: ${activeModule.visual_analogy.everyday_parallel} Notice how this directly mirrors point #2: "${activeModule.key_points[1] || activeModule.key_points[0]}".`;
+  if (
+    quickAction === 'real_world_example' ||
+    lower.includes('real-world') ||
+    lower.includes('example') ||
+    lower.includes('analogy')
+  ) {
+    const idx = activeModule.key_points.length > 1 ? 1 : 0;
+    const reply = `Here is a concrete real-world parallel for **${activeModule.visual_analogy.target_concept}**: ${activeModule.visual_analogy.everyday_parallel} Notice how this directly mirrors point #${idx + 1}: *"${activeModule.key_points[idx]}"*.`;
     return {
-      writtenReply: reply,
-      spokenReply: reply,
-      highlightedPointIndex: activeModule.key_points.length > 1 ? 1 : 0,
+      spoken_reply: reply.replace(/[*"]/g, ''),
+      written_markdown: reply,
+      highlight_key_point_index: idx,
+      suggested_follow_ups: [
+        'Why does this analogy break down at scale?',
+        'Explain the formula step by step',
+        'Quiz me on this module',
+      ],
     };
   }
 
-  if (lower.includes('test me') || lower.includes('quiz') || lower.includes('check')) {
-    const reply = `Ready for the Concept Check? ${activeModule.understanding_check.question_spoken} (Hint if you need it: ${activeModule.understanding_check.hint})`;
+  if (
+    quickAction === 'test_me' ||
+    lower.includes('test me') ||
+    lower.includes('quiz') ||
+    lower.includes('check')
+  ) {
+    const idx = Math.max(0, activeModule.key_points.length - 1);
+    const written = `**Ready for a quick concept check?**\n\n${activeModule.understanding_check.question_spoken}\n\n*(Hint if you need it: ${activeModule.understanding_check.hint})*`;
     return {
-      writtenReply: reply,
-      spokenReply: activeModule.understanding_check.question_spoken,
-      highlightedPointIndex: activeModule.key_points.length - 1,
+      spoken_reply: activeModule.understanding_check.question_spoken,
+      written_markdown: written,
+      highlight_key_point_index: idx,
+      suggested_follow_ups: [
+        'Give me a hint to get started',
+        'Explain this simpler first',
+        'How does this connect to the next module?',
+      ],
     };
   }
 
-  // Match against key points or general question
   const methodologyNote =
     config.methodology === 'socratic'
       ? `Think about this first: based on "${activeModule.visual_analogy.target_concept}", what do you predict happens next?`
@@ -762,10 +1013,60 @@ export function generateContextualTutorReply(
       ? `Try echoing that back in one simple sentence without technical jargon!`
       : `Notice how this connects directly to: "${activeModule.key_points[0]}".`;
 
-  const reply = `Great question on "${activeModule.title}". ${activeModule.core_concept} ${methodologyNote}`;
+  const reply = `Great question on **${activeModule.title}**. ${activeModule.core_concept} ${methodologyNote}`;
   return {
-    writtenReply: reply,
-    spokenReply: reply,
-    highlightedPointIndex: 0,
+    spoken_reply: reply.replace(/\*\*/g, ''),
+    written_markdown: reply,
+    highlight_key_point_index: 0,
+    suggested_follow_ups: [
+      `How does "${activeModule.visual_analogy.target_concept}" work in practice?`,
+      'Give me a real-world example',
+      'Test me on this',
+    ],
   };
+}
+
+// Parse SSE data chunks cleanly from /api/v1/tutor-chat/stream
+export function extractTextFromSseChunk(rawChunk: string): {
+  tokens: string;
+  done: boolean;
+  structuredPayload?: Partial<TutorChatResponse>;
+} {
+  let tokens = '';
+  let done = false;
+  let structuredPayload: Partial<TutorChatResponse> | undefined;
+
+  const lines = rawChunk.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('data:')) {
+      const dataStr = trimmed.slice(5).trim();
+      if (dataStr === '[DONE]') {
+        done = true;
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(dataStr);
+        if (typeof parsed === 'string') {
+          tokens += parsed;
+        } else if (parsed && typeof parsed === 'object') {
+          if (typeof parsed.token === 'string') tokens += parsed.token;
+          else if (typeof parsed.delta === 'string') tokens += parsed.delta;
+          else if (typeof parsed.content === 'string') tokens += parsed.content;
+          else if (typeof parsed.text === 'string') tokens += parsed.text;
+          else if (typeof parsed.written_markdown === 'string') {
+            structuredPayload = parsed;
+            if (!tokens) tokens += parsed.written_markdown;
+          }
+          if (parsed.done === true) done = true;
+        }
+      } catch {
+        // Plain text data line
+        tokens += dataStr;
+      }
+    }
+  }
+
+  return { tokens, done, structuredPayload };
 }
