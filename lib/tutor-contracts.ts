@@ -1684,3 +1684,90 @@ export function splitIntoSpeechSentences(rawText: string): string[] {
   return chunks.length > 0 ? chunks : [cleaned];
 }
 
+export type MicPatienceMode = 'manual' | '5s' | '8s';
+
+export const MIC_PATIENCE_OPTIONS: {
+  value: MicPatienceMode;
+  label: string;
+  shortLabel: string;
+  silenceMs: number | null;
+}[] = [
+  {
+    value: 'manual',
+    label: 'Manual Send (Default)',
+    shortLabel: 'Manual Send',
+    silenceMs: null,
+  },
+  {
+    value: '5s',
+    label: '5s Thinking Pause',
+    shortLabel: '5s Pause',
+    silenceMs: 5000,
+  },
+  {
+    value: '8s',
+    label: '8s Deep Thinking Pause',
+    shortLabel: '8s Deep Pause',
+    silenceMs: 8000,
+  },
+];
+
+export function getMicPatienceSilenceMs(mode: MicPatienceMode): number | null {
+  if (mode === '5s') return 5000;
+  if (mode === '8s') return 8000;
+  return null;
+}
+
+/**
+ * Joins committedTranscript + " " + interimTranscript cleanly without duplicate spaces
+ * while preserving user punctuation and manual edits.
+ */
+export function combineSpeechTranscripts(
+  committedTranscript: string,
+  interimTranscript: string
+): string {
+  const c = (committedTranscript || '').trim();
+  const i = (interimTranscript || '').trim();
+  if (c && i) return `${c} ${i}`;
+  return c || i;
+}
+
+/**
+ * Processes a Web Speech API SpeechRecognitionEvent result list starting at resultIndex,
+ * appending finalized chunks (isFinal === true) to committedTranscript and keeping
+ * non-final chunks in interimTranscript so thoughts accumulate across pauses.
+ */
+export function extractSpeechRecognitionChunks(
+  results: ArrayLike<{ isFinal?: boolean; 0: { transcript: string } }>,
+  resultIndex: number,
+  currentCommittedTranscript: string
+): {
+  committedTranscript: string;
+  interimTranscript: string;
+  combinedText: string;
+} {
+  let nextCommitted = (currentCommittedTranscript || '').trim();
+  let nextInterim = '';
+
+  const startIdx = Math.max(0, resultIndex || 0);
+  for (let i = startIdx; i < results.length; i++) {
+    const item = results[i];
+    const chunkText = item && item[0] && typeof item[0].transcript === 'string'
+      ? item[0].transcript.trim()
+      : '';
+    if (!chunkText) continue;
+
+    if (item.isFinal) {
+      nextCommitted = nextCommitted ? `${nextCommitted} ${chunkText}` : chunkText;
+    } else {
+      nextInterim = nextInterim ? `${nextInterim} ${chunkText}` : chunkText;
+    }
+  }
+
+  return {
+    committedTranscript: nextCommitted,
+    interimTranscript: nextInterim,
+    combinedText: combineSpeechTranscripts(nextCommitted, nextInterim),
+  };
+}
+

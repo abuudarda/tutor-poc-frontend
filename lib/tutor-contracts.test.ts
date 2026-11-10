@@ -7,11 +7,14 @@ import {
   buildEvaluateCheckpointPayload,
   buildSynthesizedPdfBytes,
   buildTutorChatPayload,
+  combineSpeechTranscripts,
   determineDynamicModuleCount,
   estimateFileMetadata,
   evaluateUnderstandingResponse,
+  extractSpeechRecognitionChunks,
   extractTextFromSseChunk,
   generateContextualTutorReply,
+  getMicPatienceSilenceMs,
   getPersonaProsody,
   normalizeBaseUrl,
   normalizeTutorConfig,
@@ -190,7 +193,6 @@ test('splitIntoSpeechSentences splits multi-sentence text cleanly for sequential
 });
 
 test('determineDynamicModuleCount and synthesizeAdaptiveLessonFromPayload scale from 2 to 8+ modules dynamically', () => {
-  // 1. Short notes (< 300 words) -> 2 modules
   const shortNotes =
     'Chapter 1: Thermodynamics Basics\n\nFirst law of thermodynamics states that energy is conserved across closed systems.\n\nSecond law states that entropy increases in isolated systems over time.';
   assert.equal(determineDynamicModuleCount(shortNotes), 2);
@@ -204,21 +206,16 @@ test('determineDynamicModuleCount and synthesizeAdaptiveLessonFromPayload scale 
   });
   assert.equal(shortLesson.modules.length, 2);
 
-  // 2. Medium section (300-900 words) -> 3 to 5 modules
   const mediumWords = Array.from(
     { length: 4 },
     (_, i) =>
       `${i + 1}. Section Topic ${i + 1}\n` +
-      Array.from(
-        { length: 120 },
-        (__, w) => `concept_${i}_${w}`
-      ).join(' ') +
+      Array.from({ length: 120 }, (__, w) => `concept_${i}_${w}`).join(' ') +
       '.'
   ).join('\n\n');
   const medCount = determineDynamicModuleCount(mediumWords);
   assert.ok(medCount >= 3 && medCount <= 5);
 
-  // 3. Long chapter (900+ words or >= 6 headings) -> 6 to 8+ modules
   const longChapter = [
     'Chapter 9: Distributed Systems Architecture',
     ...Array.from(
@@ -244,10 +241,58 @@ test('determineDynamicModuleCount and synthesizeAdaptiveLessonFromPayload scale 
   const validated = validateIncomingLessonJson(JSON.stringify(longLesson));
   assert.equal(validated.valid, true);
 
-  // 4. Synthesized PDF bytes start with %PDF-1.4
   const pdfBytes = buildSynthesizedPdfBytes('Test Chapter', shortNotes);
   const header = new TextDecoder().decode(pdfBytes.slice(0, 8));
   assert.equal(header, '%PDF-1.4');
 });
+
+test('extractSpeechRecognitionChunks accumulates committedTranscript and interimTranscript across thinking pauses', () => {
+  assert.equal(getMicPatienceSilenceMs('manual'), null);
+  assert.equal(getMicPatienceSilenceMs('5s'), 5000);
+  assert.equal(getMicPatienceSilenceMs('8s'), 8000);
+
+  // First phrase finalized before a thinking pause
+  const firstPass = extractSpeechRecognitionChunks(
+    [{ isFinal: true, 0: { transcript: 'If the learning rate is too high,' } }],
+    0,
+    ''
+  );
+  assert.equal(firstPass.committedTranscript, 'If the learning rate is too high,');
+  assert.equal(firstPass.interimTranscript, '');
+  assert.equal(firstPass.combinedText, 'If the learning rate is too high,');
+
+  // After a thinking pause and engine reconnect, user speaks an interim phrase
+  const secondPass = extractSpeechRecognitionChunks(
+    [{ isFinal: false, 0: { transcript: 'the hiker will overshoot the valley' } }],
+    0,
+    firstPass.committedTranscript
+  );
+  assert.equal(secondPass.committedTranscript, 'If the learning rate is too high,');
+  assert.equal(secondPass.interimTranscript, 'the hiker will overshoot the valley');
+  assert.equal(
+    secondPass.combinedText,
+    'If the learning rate is too high, the hiker will overshoot the valley'
+  );
+
+  // Second phrase finalizes and third interim phrase begins
+  const thirdPass = extractSpeechRecognitionChunks(
+    [
+      { isFinal: true, 0: { transcript: 'the hiker will overshoot the valley' } },
+      { isFinal: false, 0: { transcript: 'and diverge.' } },
+    ],
+    0,
+    firstPass.committedTranscript
+  );
+  assert.equal(
+    thirdPass.committedTranscript,
+    'If the learning rate is too high, the hiker will overshoot the valley'
+  );
+  assert.equal(thirdPass.interimTranscript, 'and diverge.');
+  assert.equal(
+    combineSpeechTranscripts(thirdPass.committedTranscript, thirdPass.interimTranscript),
+    'If the learning rate is too high, the hiker will overshoot the valley and diverge.'
+  );
+});
+
 
 

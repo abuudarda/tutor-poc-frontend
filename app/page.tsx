@@ -567,7 +567,7 @@ export default function MultimodalTutorApp() {
           Socratica Studio
         </a>
 
-        {/* Zone 2: 4 concise single-line text navigation links */}
+        {/* Zone 2: Concise single-line text navigation links */}
         <nav
           aria-label="Primary Workspace Navigation"
           className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600 dark:text-slate-400"
@@ -600,32 +600,13 @@ export default function MultimodalTutorApp() {
           >
             Classroom
           </a>
-          <a
-            href="#json-contracts"
-            onClick={(e) => {
-              e.preventDefault();
-              setIsDebugDrawerOpen(true);
-            }}
-            className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
-          >
-            JSON Sandbox
-          </a>
-          <a
-            href="#theme-toggle"
-            onClick={(e) => {
-              e.preventDefault();
-              setIsDarkMode((prev) => !prev);
-            }}
-            className="hover:text-slate-900 dark:hover:text-white transition-colors whitespace-nowrap shrink-0"
-          >
-            {isDarkMode ? 'Light Theme' : 'Dark Theme'}
-          </a>
         </nav>
 
         {/* Zone 3: 1 primary action */}
         <div className="flex items-center shrink-0">
           {activeView === 'studio' ? (
             <button
+              id="nav-interactive-classroom"
               type="button"
               onClick={() => setActiveView('classroom')}
               className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
@@ -695,8 +676,12 @@ export default function MultimodalTutorApp() {
             mockBackendMode={mockBackendMode}
             backendBaseUrl={backendBaseUrl}
             sseStreamingEnabled={sseStreamingEnabled}
+            isDarkMode={isDarkMode}
+            isDebugDrawerOpen={isDebugDrawerOpen}
             autoSpeakTrigger={autoSpeakTrigger}
             onToggleSseStreaming={setSseStreamingEnabled}
+            onToggleDarkMode={() => setIsDarkMode((prev) => !prev)}
+            onToggleDebugDrawer={() => setIsDebugDrawerOpen((prev) => !prev)}
             onSelectModule={setActiveModuleIndex}
             onMarkModuleMastered={handleMarkModuleMastered}
             onBackToStudio={() => setActiveView('studio')}
@@ -705,7 +690,7 @@ export default function MultimodalTutorApp() {
         )}
       </main>
 
-      {/* Floating Bottom-Left Developer Debug Drawer */}
+      {/* Developer Debug Drawer Modal (Toggled via Classroom Sidebar) */}
       <DeveloperDebugDrawer
         key={incomingLesson.lesson_id}
         isOpen={isDebugDrawerOpen}

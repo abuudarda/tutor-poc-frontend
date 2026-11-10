@@ -20,6 +20,12 @@ import {
   Columns2,
   FileText,
   LayoutDashboard,
+  Clock,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Sun,
+  Moon,
+  Terminal,
 } from 'lucide-react';
 import {
   IncomingLessonResponse,
@@ -30,11 +36,16 @@ import {
   ChatHistoryTurn,
   EndpointKey,
   SpeechVoiceInput,
+  MicPatienceMode,
+  MIC_PATIENCE_OPTIONS,
   buildEvaluateCheckpointPayload,
   buildTutorChatPayload,
+  combineSpeechTranscripts,
   evaluateUnderstandingResponse,
+  extractSpeechRecognitionChunks,
   extractTextFromSseChunk,
   generateContextualTutorReply,
+  getMicPatienceSilenceMs,
   getPersonaProsody,
   normalizeBaseUrl,
   rankEnglishVoicesForPersona,
@@ -66,8 +77,12 @@ interface InteractiveClassroomProps {
   mockBackendMode: boolean;
   backendBaseUrl: string;
   sseStreamingEnabled: boolean;
+  isDarkMode: boolean;
+  isDebugDrawerOpen: boolean;
   autoSpeakTrigger: number;
   onToggleSseStreaming: (enabled: boolean) => void;
+  onToggleDarkMode: () => void;
+  onToggleDebugDrawer: () => void;
   onSelectModule: (index: number) => void;
   onMarkModuleMastered: (moduleId: string) => void;
   onBackToStudio: () => void;
@@ -95,8 +110,12 @@ export function InteractiveClassroom({
   mockBackendMode,
   backendBaseUrl,
   sseStreamingEnabled,
+  isDarkMode,
+  isDebugDrawerOpen,
   autoSpeakTrigger,
   onToggleSseStreaming,
+  onToggleDarkMode,
+  onToggleDebugDrawer,
   onSelectModule,
   onMarkModuleMastered,
   onBackToStudio,
@@ -104,6 +123,9 @@ export function InteractiveClassroom({
 }: InteractiveClassroomProps) {
   const activeModule: LessonModule =
     lesson.modules[activeModuleIndex] || lesson.modules[0];
+
+  // Expandable/Collapsible Classroom Sidebar State (Open by default in Classroom View)
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
 
   // Workspace View Mode: 'whiteboard' | 'split' (PDF + Board) | 'document' (Source Document)
   const [workspaceLayout, setWorkspaceLayout] = useState<
@@ -119,10 +141,14 @@ export function InteractiveClassroom({
   const [browserVoices, setBrowserVoices] = useState<SpeechVoiceInput[]>([]);
   const [userSelectedVoiceURI, setUserSelectedVoiceURI] = useState<string>('');
 
-  // Microphone / SpeechRecognition State
+  // Microphone / Continuous SpeechRecognition State
   const [isListening, setIsListening] = useState(false);
   const [activeMicTarget, setActiveMicTarget] = useState<'chat' | 'checkpoint' | null>(null);
   const [micStatusNote, setMicStatusNote] = useState<string | null>(null);
+  const [committedTranscript, setCommittedTranscript] = useState<string>('');
+  const [interimTranscript, setInterimTranscript] = useState<string>('');
+  const [micPatienceMode, setMicPatienceMode] = useState<MicPatienceMode>('manual');
+  const [silenceCountdownSeconds, setSilenceCountdownSeconds] = useState<number | null>(null);
 
   // Understanding Checkpoint State per Module
   const [checkpointAnswers, setCheckpointAnswers] = useState<Record<string, string>>({});
@@ -153,12 +179,20 @@ export function InteractiveClassroom({
   const [isTutorReplying, setIsTutorReplying] = useState(false);
   const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
 
-  // Refs for timers and Web Speech
+  // Refs for timers and Web Speech (TTS + Continuous SpeechRecognition)
   const keyPointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fallbackSpeechTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechSessionIdRef = useRef<number>(0);
   const nativeVoicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const recognitionRef = useRef<any>(null);
+  const isUserActivelyRecordingRef = useRef<boolean>(false);
+  const activeMicTargetRef = useRef<'chat' | 'checkpoint' | null>(null);
+  const committedTranscriptRef = useRef<string>('');
+  const interimTranscriptRef = useRef<string>('');
+  const micPatienceModeRef = useRef<MicPatienceMode>('manual');
+  const silenceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const simulatedVoiceTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const msgSeqRef = useRef<number>(1);
 
@@ -345,13 +379,18 @@ export function InteractiveClassroom({
   useEffect(() => {
     return () => {
       speechSessionIdRef.current += 1;
+      isUserActivelyRecordingRef.current = false;
       if (keyPointTimerRef.current) clearInterval(keyPointTimerRef.current);
       if (fallbackSpeechTimerRef.current) clearTimeout(fallbackSpeechTimerRef.current);
+      if (silenceTimeoutRef.current) clearTimeout(silenceTimeoutRef.current);
+      if (silenceCountdownIntervalRef.current) clearInterval(silenceCountdownIntervalRef.current);
+      simulatedVoiceTimersRef.current.forEach((t) => clearTimeout(t));
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
       if (recognitionRef.current) {
         try {
+          recognitionRef.current.onend = null;
           recognitionRef.current.stop();
         } catch {
           // ignore
@@ -469,8 +508,64 @@ export function InteractiveClassroom({
     }
   };
 
+  const clearSilenceTimers = () => {
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    if (silenceCountdownIntervalRef.current) {
+      clearInterval(silenceCountdownIntervalRef.current);
+      silenceCountdownIntervalRef.current = null;
+    }
+    setSilenceCountdownSeconds(null);
+  };
+
+  const stopActiveMicrophone = (options?: { keepStatusNote?: boolean }) => {
+    isUserActivelyRecordingRef.current = false;
+    activeMicTargetRef.current = null;
+    clearSilenceTimers();
+    simulatedVoiceTimersRef.current.forEach((t) => clearTimeout(t));
+    simulatedVoiceTimersRef.current = [];
+
+    // Fold any remaining interim speech into committedTranscript so nothing is lost on stop
+    if (interimTranscriptRef.current.trim()) {
+      const merged = combineSpeechTranscripts(
+        committedTranscriptRef.current,
+        interimTranscriptRef.current
+      );
+      committedTranscriptRef.current = merged;
+      interimTranscriptRef.current = '';
+      setCommittedTranscript(merged);
+      setInterimTranscript('');
+    } else {
+      setInterimTranscript('');
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.onend = null;
+        recognitionRef.current.stop();
+      } catch {
+        // ignore
+      }
+      recognitionRef.current = null;
+    }
+
+    setIsListening(false);
+    setActiveMicTarget(null);
+    if (!options?.keepStatusNote) {
+      setMicStatusNote(
+        'Recording paused — review or edit your transcribed thoughts, then click Send.'
+      );
+    }
+  };
+
   // Endpoint C: POST ${baseUrl}/api/v1/evaluate-checkpoint
   const handleSubmitCheckpoint = async (overrideAnswer?: string) => {
+    if (isUserActivelyRecordingRef.current && activeMicTargetRef.current === 'checkpoint') {
+      stopActiveMicrophone({ keepStatusNote: true });
+      setMicStatusNote(null);
+    }
     const answerText = (overrideAnswer ?? currentAnswer).trim();
     if (!answerText || isEvaluatingCheckpoint) return;
 
@@ -612,6 +707,10 @@ export function InteractiveClassroom({
     overridePrompt?: string,
     quickAction: QuickActionType = 'freeform'
   ) => {
+    if (isUserActivelyRecordingRef.current && activeMicTargetRef.current === 'chat') {
+      stopActiveMicrophone({ keepStatusNote: true });
+      setMicStatusNote(null);
+    }
     const promptText = (overridePrompt ?? chatInput).trim();
     if (!promptText || isTutorReplying) return;
     if (!overridePrompt) setChatInput('');
@@ -794,57 +893,188 @@ export function InteractiveClassroom({
     }
   };
 
-  // Microphone / SpeechRecognition with graceful iframe simulation fallback
-  const toggleMicrophone = (target: 'chat' | 'checkpoint') => {
-    if (isListening) {
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch {
-          // ignore
-        }
-      }
-      setIsListening(false);
-      setActiveMicTarget(null);
+  const writeCombinedTranscriptToTarget = (
+    target: 'chat' | 'checkpoint',
+    combined: string
+  ) => {
+    if (target === 'checkpoint') {
+      setCheckpointAnswers((prev) => ({
+        ...prev,
+        [activeModule.module_id]: combined,
+      }));
+    } else {
+      setChatInput(combined);
+    }
+  };
+
+  const scheduleThinkingSilenceTimer = (
+    target: 'chat' | 'checkpoint',
+    latestCombinedText: string
+  ) => {
+    clearSilenceTimers();
+
+    if (!isUserActivelyRecordingRef.current) return;
+
+    const silenceMs = getMicPatienceSilenceMs(micPatienceModeRef.current);
+    if (silenceMs === null) {
+      // Manual Send (Default): Mic stays open indefinitely across pauses until user clicks Mic or Send
+      setMicStatusNote(
+        'Mic open (Manual Send) — pause & think freely. Click Mic to stop or Send when ready.'
+      );
       return;
     }
 
+    if (!latestCombinedText.trim()) return;
+
+    const totalSec = Math.round(silenceMs / 1000);
+    let remainingSec = totalSec;
+    setSilenceCountdownSeconds(remainingSec);
+    setMicStatusNote(
+      `Sending in ${remainingSec}s... keep talking to continue`
+    );
+
+    silenceCountdownIntervalRef.current = setInterval(() => {
+      if (!isUserActivelyRecordingRef.current) {
+        clearSilenceTimers();
+        return;
+      }
+      remainingSec = Math.max(1, remainingSec - 1);
+      setSilenceCountdownSeconds(remainingSec);
+      setMicStatusNote(
+        `Sending in ${remainingSec}s... keep talking to continue`
+      );
+    }, 1000);
+
+    silenceTimeoutRef.current = setTimeout(() => {
+      if (!isUserActivelyRecordingRef.current) return;
+      const finalToSubmit = combineSpeechTranscripts(
+        committedTranscriptRef.current,
+        interimTranscriptRef.current
+      ).trim();
+      stopActiveMicrophone({ keepStatusNote: true });
+      setMicStatusNote(null);
+
+      if (finalToSubmit) {
+        if (target === 'checkpoint') {
+          void handleSubmitCheckpoint(finalToSubmit);
+        } else {
+          void handleSendChatMessage(finalToSubmit, 'freeform');
+        }
+      }
+    }, silenceMs);
+  };
+
+  const handleChangeMicPatienceMode = (nextMode: MicPatienceMode) => {
+    setMicPatienceMode(nextMode);
+    micPatienceModeRef.current = nextMode;
+
+    if (isUserActivelyRecordingRef.current && activeMicTargetRef.current) {
+      const currentText = combineSpeechTranscripts(
+        committedTranscriptRef.current,
+        interimTranscriptRef.current
+      );
+      scheduleThinkingSilenceTimer(activeMicTargetRef.current, currentText);
+    }
+  };
+
+  // True Continuous Listening with Chromium Auto-Reconnect & Thinking Silence Timer
+  const toggleMicrophone = (target: 'chat' | 'checkpoint') => {
+    // If already recording on this target, clicking Mic stops recording and leaves text in box to review/edit
+    if (isListening && activeMicTarget === target) {
+      stopActiveMicrophone();
+      return;
+    }
+
+    // If switching from one mic target to the other, stop previous first
+    if (isListening) {
+      stopActiveMicrophone({ keepStatusNote: true });
+    }
+
     stopSpeechInternal();
+
+    // Seed committedTranscript from any existing text in the input/textarea so user never loses prior text
+    const existingText =
+      target === 'checkpoint'
+        ? (checkpointAnswers[activeModule.module_id] || '').trim()
+        : chatInput.trim();
+
+    committedTranscriptRef.current = existingText;
+    interimTranscriptRef.current = '';
+    setCommittedTranscript(existingText);
+    setInterimTranscript('');
+
+    isUserActivelyRecordingRef.current = true;
+    activeMicTargetRef.current = target;
     setIsListening(true);
     setActiveMicTarget(target);
-    setMicStatusNote('Listening via microphone...');
+
+    const modeLabel =
+      MIC_PATIENCE_OPTIONS.find((o) => o.value === micPatienceModeRef.current)?.label ||
+      'Manual Send';
+    setMicStatusNote(
+      `Listening continuously (${modeLabel}) — take your time to pause and think...`
+    );
 
     const SpeechRecognitionAPI =
       typeof window !== 'undefined'
         ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
         : null;
 
+    // Graceful multi-chunk simulation fallback when browser/iframe restricts native mic access
     const triggerGracefulSimulatedVoice = (reason: string) => {
-      setMicStatusNote(`${reason} — Simulating live voice transcription...`);
-      const simulatedUtterance =
+      setMicStatusNote(
+        `${reason} — Streaming simulated voice phrases across thinking pauses...`
+      );
+      const phraseChunks =
         target === 'checkpoint'
-          ? `If the step size is set way too high, we ${
-              activeModule.understanding_check.expected_concepts[0] || 'overshoot'
-            } the valley and ${
-              activeModule.understanding_check.expected_concepts[1] || 'diverge'
-            } instead of reaching the minimum.`
-          : `Can you give me a real-world example of ${activeModule.visual_analogy.target_concept}?`;
+          ? [
+              `If the step size is set way too high,`,
+              `our hiker will ${
+                activeModule.understanding_check.expected_concepts[0] || 'overshoot'
+              } the valley`,
+              `and ${
+                activeModule.understanding_check.expected_concepts[1] || 'diverge'
+              } instead of reaching the minimum.`,
+            ]
+          : [
+              `Can you give me a real-world example`,
+              `of ${activeModule.visual_analogy.target_concept}`,
+              `and how it behaves in practice?`,
+            ];
 
-      setTimeout(() => {
-        if (target === 'checkpoint') {
-          setCheckpointAnswers((prev) => ({
-            ...prev,
-            [activeModule.module_id]: simulatedUtterance,
-          }));
-          void handleSubmitCheckpoint(simulatedUtterance);
-        } else {
-          setChatInput(simulatedUtterance);
-          void handleSendChatMessage(simulatedUtterance, 'freeform');
-        }
-        setIsListening(false);
-        setActiveMicTarget(null);
-        setTimeout(() => setMicStatusNote(null), 3000);
-      }, 1400);
+      simulatedVoiceTimersRef.current.forEach((t) => clearTimeout(t));
+      simulatedVoiceTimersRef.current = [];
+
+      phraseChunks.forEach((chunk, idx) => {
+        // First show as interimTranscript, then commit as final
+        const tInterim = setTimeout(() => {
+          if (!isUserActivelyRecordingRef.current) return;
+          interimTranscriptRef.current = chunk;
+          setInterimTranscript(chunk);
+          const combined = combineSpeechTranscripts(
+            committedTranscriptRef.current,
+            chunk
+          );
+          writeCombinedTranscriptToTarget(target, combined);
+          scheduleThinkingSilenceTimer(target, combined);
+        }, idx * 850 + 250);
+
+        const tFinal = setTimeout(() => {
+          if (!isUserActivelyRecordingRef.current) return;
+          const nextCommitted = combineSpeechTranscripts(
+            committedTranscriptRef.current,
+            chunk
+          );
+          committedTranscriptRef.current = nextCommitted;
+          interimTranscriptRef.current = '';
+          setCommittedTranscript(nextCommitted);
+          setInterimTranscript('');
+          writeCombinedTranscriptToTarget(target, nextCommitted);
+          scheduleThinkingSilenceTimer(target, nextCommitted);
+        }, idx * 850 + 700);
+
+        simulatedVoiceTimersRef.current.push(tInterim, tFinal);
+      });
     };
 
     if (!SpeechRecognitionAPI) {
@@ -855,42 +1085,77 @@ export function InteractiveClassroom({
     try {
       const recognition = new SpeechRecognitionAPI();
       recognitionRef.current = recognition;
-      recognition.continuous = false;
+      // 1. True Continuous Listening
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      let capturedTranscript = '';
-
       recognition.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          interim += event.results[i][0].transcript;
+        if (!isUserActivelyRecordingRef.current) return;
+
+        // 2. Accumulate finalized chunks into committedTranscript and live phrase into interimTranscript
+        const extracted = extractSpeechRecognitionChunks(
+          event.results,
+          event.resultIndex,
+          committedTranscriptRef.current
+        );
+
+        committedTranscriptRef.current = extracted.committedTranscript;
+        interimTranscriptRef.current = extracted.interimTranscript;
+        setCommittedTranscript(extracted.committedTranscript);
+        setInterimTranscript(extracted.interimTranscript);
+
+        writeCombinedTranscriptToTarget(target, extracted.combinedText);
+
+        // 3. Reset or maintain configurable thinking silence timer (never auto-send on 1-2s pause)
+        scheduleThinkingSilenceTimer(target, extracted.combinedText);
+      };
+
+      recognition.onerror = (event: any) => {
+        const errCode = event?.error || '';
+        // In Chromium, 'no-speech' fires when the user pauses silently for several seconds—keep mic open!
+        if (errCode === 'no-speech') {
+          return;
         }
-        capturedTranscript = interim;
-        if (target === 'checkpoint') {
-          setCheckpointAnswers((prev) => ({
-            ...prev,
-            [activeModule.module_id]: interim,
-          }));
-        } else {
-          setChatInput(interim);
+        if (
+          errCode === 'not-allowed' ||
+          errCode === 'service-not-allowed' ||
+          errCode === 'audio-capture'
+        ) {
+          triggerGracefulSimulatedVoice('Iframe mic permission restricted');
         }
       };
 
-      recognition.onerror = () => {
-        triggerGracefulSimulatedVoice('Iframe mic permission restricted');
-      };
-
+      // Crucial Chromium Fix: If recognition.onend fires while isUserActivelyRecordingRef.current === true,
+      // do NOT stop recording or auto-submit—immediately call recognition.start() inside try/catch!
       recognition.onend = () => {
-        if (capturedTranscript.trim()) {
-          setIsListening(false);
-          setActiveMicTarget(null);
-          setMicStatusNote(null);
-          if (target === 'checkpoint') {
-            void handleSubmitCheckpoint(capturedTranscript);
-          } else {
-            void handleSendChatMessage(capturedTranscript, 'freeform');
-          }
+        if (!isUserActivelyRecordingRef.current) return;
+
+        // Preserve any partial interim phrase before the engine restarts its session
+        if (interimTranscriptRef.current.trim()) {
+          const merged = combineSpeechTranscripts(
+            committedTranscriptRef.current,
+            interimTranscriptRef.current
+          );
+          committedTranscriptRef.current = merged;
+          interimTranscriptRef.current = '';
+          setCommittedTranscript(merged);
+          setInterimTranscript('');
+          writeCombinedTranscriptToTarget(target, merged);
+        }
+
+        try {
+          recognition.start();
+        } catch {
+          window.setTimeout(() => {
+            if (isUserActivelyRecordingRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch {
+                // ignore
+              }
+            }
+          }, 120);
         }
       };
 
@@ -911,9 +1176,277 @@ export function InteractiveClassroom({
   ];
 
   return (
-    <section className="max-w-[1440px] mx-auto px-6 py-6">
-      {/* Top Progress Stepper & Chapter Metadata Header */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 mb-6">
+    <section className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        {/* LEFT EXPANDABLE / COLLAPSIBLE CLASSROOM SIDEBAR (Classroom Only, Open by Default) */}
+        {isSidebarOpen ? (
+          <aside
+            id="classroom-sidebar"
+            aria-label="Classroom Controls and Sandbox Sidebar"
+            className="w-full lg:w-80 xl:w-[340px] shrink-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] overflow-hidden transition-all duration-200"
+          >
+            {/* Sidebar Header with Collapse Toggle */}
+            <div className="px-4 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 flex items-center justify-between gap-2 shrink-0">
+              <div className="min-w-0">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white font-display">
+                  Classroom Studio Sidebar
+                </h2>
+                <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate">
+                  Sandbox · Voice · Workspace
+                </p>
+              </div>
+
+              <button
+                id="sidebar-collapse-btn"
+                type="button"
+                onClick={() => setIsSidebarOpen(false)}
+                aria-label="Collapse Classroom Sidebar"
+                title="Collapse sidebar to reclaim full width"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer shrink-0"
+              >
+                <PanelLeftClose className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>Collapse</span>
+              </button>
+            </div>
+
+            {/* Scrollable Sidebar Content (In Exact Top-to-Bottom Order) */}
+            <div className="p-4 space-y-5 overflow-y-auto flex-1">
+              {/* SECTION A (Very Top of Sidebar): Interactive Loss Landscape Sandbox — Test the Hiker Analogy */}
+              <ConceptSimulationDiagram
+                moduleId={activeModule.module_id}
+                moduleIndex={activeModuleIndex}
+                title={activeModule.title}
+              />
+
+              {/* SECTION B: Voice & Speech Settings */}
+              <div
+                id="sidebar-voice-settings"
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 p-3.5 space-y-3.5"
+              >
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white font-display">
+                    Voice &amp; Speech Settings
+                  </span>
+                  {activeVoiceOption?.isHd && (
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/15 border border-indigo-500/30 text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-300">
+                      HD NEURAL
+                    </span>
+                  )}
+                </div>
+
+                {/* 1. Voice Selector Dropdown Menu */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <label
+                      htmlFor="tutor-voice-picker"
+                      className="font-medium text-slate-700 dark:text-slate-300"
+                    >
+                      Tutor TTS Voice
+                    </label>
+                    <span className="font-mono text-slate-500 dark:text-slate-400 tabular-nums">
+                      {getPersonaProsody(tutorConfig.persona).rate}x · Pitch{' '}
+                      {getPersonaProsody(tutorConfig.persona).pitch}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <select
+                      id="tutor-voice-picker"
+                      aria-label="Select Tutor TTS Voice"
+                      value={activeVoiceOption?.voiceURI || ''}
+                      onChange={(e) => {
+                        const nextURI = e.target.value;
+                        setUserSelectedVoiceURI(nextURI);
+                        const picked = rankedVoices.find((v) => v.voiceURI === nextURI);
+                        const cleanLabel = picked
+                          ? picked.name.replace(/\s*-\s*English.*$/i, '').trim()
+                          : 'your selected neural voice';
+                        speakTextAloud(
+                          `Hi there! I'm now speaking with ${cleanLabel}. Let's explore ${activeModule.title} together.`,
+                          { fixedPointIndex: null, overrideVoiceURI: nextURI }
+                        );
+                      }}
+                      className="flex-1 min-w-0 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-2.5 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                    >
+                      {rankedVoices.map((voice) => (
+                        <option
+                          key={voice.voiceURI}
+                          value={voice.voiceURI}
+                          className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                        >
+                          {voice.displayLabel}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentURI = activeVoiceOption?.voiceURI || '';
+                        const cleanLabel = activeVoiceOption
+                          ? activeVoiceOption.name.replace(/\s*-\s*English.*$/i, '').trim()
+                          : 'your neural tutor voice';
+                        speakTextAloud(
+                          `Voice preview active for ${cleanLabel}. Ready to continue ${activeModule.title}.`,
+                          { fixedPointIndex: null, overrideVoiceURI: currentURI }
+                        );
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer shrink-0"
+                      title="Preview selected voice aloud"
+                    >
+                      Preview
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Mic Patience / Auto-Send Dropdown Menu */}
+                <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <label
+                      htmlFor="sidebar-mic-patience-select"
+                      className="font-medium text-slate-700 dark:text-slate-300 flex items-center gap-1.5"
+                    >
+                      <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <span>Mic Patience / Auto-Send</span>
+                    </label>
+                  </div>
+
+                  <select
+                    id="sidebar-mic-patience-select"
+                    aria-label="Mic Patience and Auto-Send Mode"
+                    value={micPatienceMode}
+                    onChange={(e) =>
+                      handleChangeMicPatienceMode(e.target.value as MicPatienceMode)
+                    }
+                    className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                  >
+                    {MIC_PATIENCE_OPTIONS.map((opt) => (
+                      <option
+                        key={opt.value}
+                        value={opt.value}
+                        className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                      >
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    {micPatienceMode === 'manual'
+                      ? 'Mic stays open across thinking pauses until you click Stop or Send.'
+                      : `Auto-submits after ${micPatienceMode} of silence following your last spoken word.`}
+                  </p>
+                </div>
+              </div>
+
+              {/* SECTION C: Workspace & System Controls */}
+              <div
+                id="sidebar-workspace-controls"
+                className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50 p-3.5 space-y-2.5"
+              >
+                <div className="pb-2 border-b border-slate-200/80 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white font-display">
+                    Workspace &amp; System
+                  </span>
+                </div>
+
+                {/* 1. SSE Streaming On/Off Button */}
+                <button
+                  id="sidebar-sse-toggle-btn"
+                  type="button"
+                  role="switch"
+                  aria-checked={sseStreamingEnabled}
+                  onClick={() => onToggleSseStreaming(!sseStreamingEnabled)}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Radio className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    <span>Stream Tutor Replies (SSE)</span>
+                  </span>
+                  <span
+                    className={`font-mono text-[11px] font-semibold px-1.5 py-0.5 rounded ${
+                      sseStreamingEnabled
+                        ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                    }`}
+                  >
+                    {sseStreamingEnabled ? 'ON' : 'OFF'}
+                  </span>
+                </button>
+
+                {/* 2. Dark Theme Toggle Button */}
+                <button
+                  id="sidebar-theme-toggle-btn"
+                  type="button"
+                  onClick={onToggleDarkMode}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-medium text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    {isDarkMode ? (
+                      <Sun className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    ) : (
+                      <Moon className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    )}
+                    <span>Appearance Theme</span>
+                  </span>
+                  <span className="font-mono text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                    {isDarkMode ? 'Dark Mode' : 'Light Mode'}
+                  </span>
+                </button>
+
+                {/* 3. Developer Sandbox Show/Hide Button */}
+                <button
+                  id="sidebar-debug-drawer-btn"
+                  type="button"
+                  onClick={onToggleDebugDrawer}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs font-mono font-medium transition-colors cursor-pointer ${
+                    isDebugDrawerOpen
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-slate-900 dark:bg-slate-800 text-slate-100 border-slate-800 dark:border-slate-700 hover:bg-slate-800 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Terminal className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>Developer JSON Sandbox</span>
+                  </span>
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-800 dark:bg-slate-900 text-indigo-300">
+                    {isDebugDrawerOpen ? 'Hide' : 'Show'}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </aside>
+        ) : (
+          /* Collapsed Sidebar Rail with Expand Button */
+          <aside
+            id="classroom-sidebar-collapsed"
+            aria-label="Collapsed Classroom Sidebar"
+            className="w-full lg:w-12 shrink-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 flex lg:flex-col items-center justify-between gap-3 lg:sticky lg:top-6"
+          >
+            <button
+              id="sidebar-expand-btn"
+              type="button"
+              onClick={() => setIsSidebarOpen(true)}
+              aria-label="Expand Classroom Sidebar"
+              title="Expand Classroom Sidebar (Loss Landscape Sandbox, Voice & System Controls)"
+              className="inline-flex items-center justify-center gap-2 p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+            >
+              <PanelLeftOpen className="w-4 h-4 shrink-0" />
+              <span className="text-xs font-semibold lg:hidden">
+                Expand Classroom Sidebar
+              </span>
+            </button>
+
+            <span className="hidden lg:block text-[10px] font-mono font-semibold tracking-widest uppercase text-slate-400 dark:text-slate-500 [writing-mode:vertical-rl] rotate-180 py-2 select-none">
+              Sidebar Controls
+            </span>
+          </aside>
+        )}
+
+        {/* MAIN RIGHT CLASSROOM CONTENT COLUMN */}
+        <div className="flex-1 min-w-0 w-full space-y-6">
+          {/* Top Progress Stepper & Chapter Metadata Header */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
           <div className="space-y-1">
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 font-mono tabular-nums">
@@ -1213,13 +1746,6 @@ export function InteractiveClassroom({
                   </div>
                 </div>
               </div>
-
-              {/* Interactive Concept Simulation Canvas */}
-              <ConceptSimulationDiagram
-                moduleId={activeModule.module_id}
-                moduleIndex={activeModuleIndex}
-                title={activeModule.title}
-              />
             </div>
 
             {/* 3. Key Breakdown Cards (Dynamically Highlighted During Narration or Tutor Chat Reply) */}
@@ -1380,38 +1906,70 @@ export function InteractiveClassroom({
                 id="checkpoint-answer-input"
                 rows={3}
                 value={currentAnswer}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const val = e.target.value;
                   setCheckpointAnswers((prev) => ({
                     ...prev,
-                    [activeModule.module_id]: e.target.value,
-                  }))
-                }
-                placeholder="Type your explanation here, or click 'Answer by Voice' to speak directly to your AI Tutor..."
+                    [activeModule.module_id]: val,
+                  }));
+                  if (isListening && activeMicTarget === 'checkpoint') {
+                    committedTranscriptRef.current = val;
+                    interimTranscriptRef.current = '';
+                    setCommittedTranscript(val);
+                    setInterimTranscript('');
+                    scheduleThinkingSilenceTimer('checkpoint', val);
+                  }
+                }}
+                placeholder="Type your explanation here, or click 'Answer by Voice' to speak directly to your AI Tutor (pauses won't cut you off)..."
                 className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3.5 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
 
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => toggleMicrophone('checkpoint')}
-                  className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
-                    isListening && activeMicTarget === 'checkpoint'
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {isListening && activeMicTarget === 'checkpoint' ? (
-                    <>
-                      <MicOff className="w-4 h-4" />
-                      <span>Stop Recording Voice</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                      <span>Answer by Voice (Mic)</span>
-                    </>
+              {/* Live Recording Status & Thinking Countdown Badge for Checkpoint */}
+              {isListening && activeMicTarget === 'checkpoint' && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-rose-50/80 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-xs">
+                  <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
+                    <span>
+                      {silenceCountdownSeconds !== null
+                        ? `Sending in ${silenceCountdownSeconds}s... keep talking to continue`
+                        : micPatienceMode === 'manual'
+                          ? 'Mic stays open while you think — click Stop Recording or Verify Understanding when ready'
+                          : `Mic Open (${micPatienceMode} Thinking Pause) — timer starts after you speak`}
+                    </span>
+                  </div>
+                  {interimTranscript && (
+                    <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 italic truncate max-w-[260px]">
+                      Live: &ldquo;{interimTranscript}&rdquo;
+                    </span>
                   )}
-                </button>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    id="checkpoint-mic-btn"
+                    type="button"
+                    onClick={() => toggleMicrophone('checkpoint')}
+                    className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                      isListening && activeMicTarget === 'checkpoint'
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {isListening && activeMicTarget === 'checkpoint' ? (
+                      <>
+                        <MicOff className="w-4 h-4" />
+                        <span>Stop Recording (Keep Text)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>Answer by Voice (Mic)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
 
                 <div className="flex items-center gap-2.5">
                   <button
@@ -1655,97 +2213,6 @@ export function InteractiveClassroom({
               </button>
             </div>
 
-            {/* Live Neural Voice Picker Dropdown (Badging Natural & Google voices as HD) */}
-            <div className="pt-2 border-t border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between gap-2 text-[11px]">
-                <label
-                  htmlFor="tutor-voice-picker"
-                  className="font-mono text-slate-300 flex items-center gap-1.5"
-                >
-                  <span>Neural Voice Engine</span>
-                  {activeVoiceOption?.isHd && (
-                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/40 text-[10px] font-mono font-bold text-indigo-300">
-                      HD
-                    </span>
-                  )}
-                </label>
-                <span className="font-mono text-slate-400 tabular-nums">
-                  {getPersonaProsody(tutorConfig.persona).rate}x · Pitch{' '}
-                  {getPersonaProsody(tutorConfig.persona).pitch}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <select
-                  id="tutor-voice-picker"
-                  aria-label="Select Tutor TTS Voice"
-                  value={activeVoiceOption?.voiceURI || ''}
-                  onChange={(e) => {
-                    const nextURI = e.target.value;
-                    setUserSelectedVoiceURI(nextURI);
-                    const picked = rankedVoices.find((v) => v.voiceURI === nextURI);
-                    const cleanLabel = picked
-                      ? picked.name.replace(/\s*-\s*English.*$/i, '').trim()
-                      : 'your selected neural voice';
-                    speakTextAloud(
-                      `Hi there! I'm now speaking with ${cleanLabel}. Let's explore ${activeModule.title} together.`,
-                      { fixedPointIndex: null, overrideVoiceURI: nextURI }
-                    );
-                  }}
-                  className="flex-1 min-w-0 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 font-sans focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
-                >
-                  {rankedVoices.map((voice) => (
-                    <option
-                      key={voice.voiceURI}
-                      value={voice.voiceURI}
-                      className="bg-slate-900 text-slate-100"
-                    >
-                      {voice.displayLabel}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const currentURI = activeVoiceOption?.voiceURI || '';
-                    const cleanLabel = activeVoiceOption
-                      ? activeVoiceOption.name.replace(/\s*-\s*English.*$/i, '').trim()
-                      : 'your neural tutor voice';
-                    speakTextAloud(
-                      `Voice preview active for ${cleanLabel}. Ready to continue ${activeModule.title}.`,
-                      { fixedPointIndex: null, overrideVoiceURI: currentURI }
-                    );
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono font-semibold text-indigo-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
-                  title="Preview selected voice aloud"
-                >
-                  Preview
-                </button>
-              </div>
-            </div>
-
-            {/* Endpoint E Toggle: Stream Tutor Replies (SSE) */}
-            <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 text-xs">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Radio className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                <span>Stream Tutor Replies (SSE)</span>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={sseStreamingEnabled}
-                onClick={() => onToggleSseStreaming(!sseStreamingEnabled)}
-                className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                  sseStreamingEnabled
-                    ? 'bg-emerald-600/30 border-emerald-500 text-emerald-300'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
-                }`}
-              >
-                {sseStreamingEnabled ? 'SSE ON (/stream)' : 'JSON (?stream=false)'}
-              </button>
-            </div>
-
             {micStatusNote && (
               <p className="text-[11px] font-mono text-amber-300 bg-slate-800/90 px-2.5 py-1.5 rounded border border-slate-700">
                 {micStatusNote}
@@ -1831,7 +2298,21 @@ export function InteractiveClassroom({
               ))}
             </div>
 
-            {/* Dual-Mode Input Bar: Text Input + Push-to-Talk Microphone + Send */}
+            {/* Live Recording Status & Thinking Countdown Badge for Chat (when active) */}
+            {isListening && activeMicTarget === 'chat' && (
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-[11px] font-mono font-semibold text-rose-700 dark:text-rose-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  {silenceCountdownSeconds !== null
+                    ? `Sending in ${silenceCountdownSeconds}s... keep talking to continue`
+                    : micPatienceMode === 'manual'
+                      ? 'Mic Open · Manual Send'
+                      : `Mic Open · ${micPatienceMode} Thinking Pause`}
+                </span>
+              </div>
+            )}
+
+            {/* Dual-Mode Input Bar: Text Input + Continuous Microphone + Send */}
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -1840,12 +2321,18 @@ export function InteractiveClassroom({
               className="flex items-center gap-2"
             >
               <button
+                id="chat-mic-btn"
                 type="button"
                 onClick={() => toggleMicrophone('chat')}
                 aria-label={
                   isListening && activeMicTarget === 'chat'
-                    ? 'Stop voice input'
-                    : 'Push to talk voice input'
+                    ? 'Stop voice recording and keep text'
+                    : 'Start continuous voice input'
+                }
+                title={
+                  isListening && activeMicTarget === 'chat'
+                    ? 'Click to stop recording (leaves text in input to review)'
+                    : 'Click to speak (stays open across thinking pauses)'
                 }
                 className={`p-2.5 rounded-xl border transition-colors cursor-pointer shrink-0 ${
                   isListening && activeMicTarget === 'chat'
@@ -1867,8 +2354,22 @@ export function InteractiveClassroom({
                 id="tutor-chat-input"
                 type="text"
                 value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask a question or click mic to speak..."
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setChatInput(val);
+                  if (isListening && activeMicTarget === 'chat') {
+                    committedTranscriptRef.current = val;
+                    interimTranscriptRef.current = '';
+                    setCommittedTranscript(val);
+                    setInterimTranscript('');
+                    scheduleThinkingSilenceTimer('chat', val);
+                  }
+                }}
+                placeholder={
+                  isListening && activeMicTarget === 'chat'
+                    ? 'Listening continuously... pause to think or edit text live'
+                    : 'Ask a question or click mic to speak...'
+                }
                 className="flex-1 min-w-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
 
@@ -1885,8 +2386,13 @@ export function InteractiveClassroom({
                 )}
               </button>
             </form>
+            {committedTranscript && isListening && (
+              <p className="sr-only">Committed voice transcript: {committedTranscript}</p>
+            )}
           </div>
         </aside>
+          </div>
+        </div>
       </div>
     </section>
   );

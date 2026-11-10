@@ -47,7 +47,6 @@ const ENDPOINT_TABS: { key: EndpointKey; label: string; path: string }[] = [
 
 export function DeveloperDebugDrawer({
   isOpen,
-  onOpen,
   onClose,
   outgoingPayload,
   incomingLesson,
@@ -98,29 +97,15 @@ export function DeveloperDebugDrawer({
 
   const currentTrafficEntry = apiTrafficLogs[selectedEndpoint];
 
-  return (
-    <>
-      {/* Floating Bottom-Left Trigger Button */}
-      <div className="fixed bottom-4 left-16 z-40">
-        <button
-          type="button"
-          onClick={onOpen}
-          className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-slate-100 border border-slate-700 shadow-lg hover:bg-slate-800 dark:hover:bg-slate-700 text-xs font-mono font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0"
-          aria-label="Open Developer Debug Drawer"
-        >
-          <Terminal className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>Developer JSON Sandbox</span>
-        </button>
-      </div>
+  if (!isOpen) return null;
 
-      {/* Modal Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="debug-modal-title"
-        >
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/80"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="debug-modal-title"
+    >
           <div className="w-full max-w-6xl max-h-[90vh] rounded-2xl border border-slate-700 bg-slate-900 text-slate-100 shadow-2xl flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
@@ -401,8 +386,6 @@ export function DeveloperDebugDrawer({
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
