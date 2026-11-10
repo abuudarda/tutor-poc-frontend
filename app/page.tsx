@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Play, Settings2, Check, RotateCcw, ArrowRight, FileText, Sliders, Mic } from 'lucide-react';
 import {
   EducationLevel,
   SimplicityLevel,
@@ -17,6 +18,7 @@ import {
   buildOutgoingPayload,
   buildSynthesizedPdfBytes,
   estimateFileMetadata,
+  getYouTubeEmbedUrl as convertYouTubeUrlToEmbed,
   normalizeBaseUrl,
   synthesizeAdaptiveLessonFromPayload,
   validateIncomingLessonJson,
@@ -25,9 +27,22 @@ import { SetupStudio } from '@/components/setup-studio';
 import { InteractiveClassroom } from '@/components/interactive-classroom';
 import { DeveloperDebugDrawer } from '@/components/developer-debug-drawer';
 
+const DEFAULT_DEMO_YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+const DEMO_YOUTUBE_STORAGE_KEY = 'socratica_demo_youtube_url';
+
+function getYouTubeEmbedUrl(url: string): string {
+  return convertYouTubeUrlToEmbed(url);
+}
+
 export default function MultimodalTutorApp() {
-  // Active View: 'studio' (View 1) | 'classroom' (View 2)
-  const [activeView, setActiveView] = useState<'studio' | 'classroom'>('studio');
+  // Active View: 'demo' (View 0) | 'studio' (View 1) | 'classroom' (View 2)
+  const [activeView, setActiveView] = useState<'demo' | 'studio' | 'classroom'>('studio');
+
+  // Configurable YouTube Demo Video State (persisted in localStorage)
+  const [demoYoutubeUrl, setDemoYoutubeUrl] = useState<string>(DEFAULT_DEMO_YOUTUBE_URL);
+  const [demoUrlInputDraft, setDemoUrlInputDraft] = useState<string>(DEFAULT_DEMO_YOUTUBE_URL);
+  const [isDemoUrlEditorOpen, setIsDemoUrlEditorOpen] = useState<boolean>(false);
+  const [demoUrlSavedNotice, setDemoUrlSavedNotice] = useState<boolean>(false);
 
   // Dark / Light Academic Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(false);
@@ -69,6 +84,51 @@ export default function MultimodalTutorApp() {
       setSourceFileUrl(null);
     }
   }, []);
+
+  // Load persisted Demo YouTube URL from localStorage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const timer = window.setTimeout(() => {
+      try {
+        const savedUrl = window.localStorage.getItem(DEMO_YOUTUBE_STORAGE_KEY);
+        if (savedUrl && savedUrl.trim().length > 0) {
+          setDemoYoutubeUrl(savedUrl.trim());
+          setDemoUrlInputDraft(savedUrl.trim());
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const handleSaveDemoYoutubeUrl = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleaned = demoUrlInputDraft.trim() || DEFAULT_DEMO_YOUTUBE_URL;
+    setDemoYoutubeUrl(cleaned);
+    setDemoUrlInputDraft(cleaned);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(DEMO_YOUTUBE_STORAGE_KEY, cleaned);
+      }
+    } catch {
+      // ignore storage errors
+    }
+    setDemoUrlSavedNotice(true);
+    window.setTimeout(() => setDemoUrlSavedNotice(false), 1800);
+  };
+
+  const handleResetDemoYoutubeUrl = () => {
+    setDemoYoutubeUrl(DEFAULT_DEMO_YOUTUBE_URL);
+    setDemoUrlInputDraft(DEFAULT_DEMO_YOUTUBE_URL);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(DEMO_YOUTUBE_STORAGE_KEY);
+      }
+    } catch {
+      // ignore storage errors
+    }
+  };
 
   // Initialize a synthesized PDF Blob URL for the default PDF preset so View 2 PDF Viewer works out of the box, and revoke on unmount
   useEffect(() => {
@@ -178,6 +238,8 @@ export default function MultimodalTutorApp() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('autostart') === '1') {
         setActiveView('classroom');
+      } else if (params.get('view') === 'demo') {
+        setActiveView('demo');
       }
     };
     const timer = window.setTimeout(syncFromUrl, 0);
@@ -200,7 +262,7 @@ export default function MultimodalTutorApp() {
     }
   }, [isDarkMode]);
 
-  // Ensure viewport scrolls cleanly to top when switching between Setup Studio and Interactive Classroom
+  // Ensure viewport scrolls cleanly to top when switching views
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });
@@ -551,10 +613,12 @@ export default function MultimodalTutorApp() {
     setActiveView('classroom');
   };
 
+  const activeEmbedUrl = useMemo(() => getYouTubeEmbedUrl(demoYoutubeUrl), [demoYoutubeUrl]);
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F6F2] dark:bg-[#111110] text-zinc-900 dark:text-stone-100">
       {/* Strict 3-Zone Architectural Top Bar (h-14 / 3.5rem) */}
-      <header className="h-14 shrink-0 flex items-center justify-between gap-8 px-6 border-b border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]">
+      <header className="h-14 shrink-0 flex items-center justify-between gap-4 sm:gap-8 px-4 sm:px-6 border-b border-stone-300/80 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816]">
         {/* Zone 1: Single text element wordmark */}
         <a
           href="#top"
@@ -567,12 +631,28 @@ export default function MultimodalTutorApp() {
           Socratica Studio
         </a>
 
-        {/* Zone 2: Concise single-line text navigation links */}
+        {/* Zone 2: Concise single-line text navigation links (00 // Demo, 01 // Setup Studio, 02 // Classroom) */}
         <nav
           aria-label="Primary Workspace Navigation"
-          className="hidden md:flex items-center gap-6 text-xs font-mono uppercase tracking-wider text-stone-600 dark:text-stone-400"
+          className="flex items-center gap-4 sm:gap-6 text-xs font-mono uppercase tracking-wider text-stone-600 dark:text-stone-400 overflow-x-auto no-scrollbar"
         >
           <a
+            id="nav-tab-demo"
+            href="#demo-showcase"
+            onClick={(e) => {
+              e.preventDefault();
+              setActiveView('demo');
+            }}
+            className={`hover:text-zinc-900 dark:hover:text-stone-100 transition-colors whitespace-nowrap shrink-0 ${
+              activeView === 'demo'
+                ? 'text-[#D95D39] dark:text-[#E87A5A] font-semibold underline decoration-2 underline-offset-8'
+                : ''
+            }`}
+          >
+            00 // Demo
+          </a>
+          <a
+            id="nav-tab-studio"
             href="#setup-studio"
             onClick={(e) => {
               e.preventDefault();
@@ -587,6 +667,7 @@ export default function MultimodalTutorApp() {
             01 // Setup Studio
           </a>
           <a
+            id="nav-tab-classroom"
             href="#interactive-classroom"
             onClick={(e) => {
               e.preventDefault();
@@ -604,7 +685,16 @@ export default function MultimodalTutorApp() {
 
         {/* Zone 3: 1 primary action */}
         <div className="flex items-center shrink-0">
-          {activeView === 'studio' ? (
+          {activeView === 'demo' ? (
+            <button
+              id="nav-launch-studio-from-header"
+              type="button"
+              onClick={() => setActiveView('studio')}
+              className="px-3.5 py-1.5 text-xs font-mono font-semibold uppercase tracking-wider text-white bg-[#D95D39] hover:bg-[#C04E2C] border border-[#D95D39] rounded-md transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              Setup Studio →
+            </button>
+          ) : activeView === 'studio' ? (
             <button
               id="nav-interactive-classroom"
               type="button"
@@ -627,7 +717,206 @@ export default function MultimodalTutorApp() {
 
       {/* Main Workspace Container */}
       <main className={activeView === 'classroom' ? 'flex-1 overflow-hidden' : 'flex-1 pb-16'}>
-        {activeView === 'studio' ? (
+        {activeView === 'demo' ? (
+          /* VIEW 0: 00 // DEMO — SYSTEM WALKTHROUGH & VIDEO SHOWCASE */
+          <section
+            id="demo-showcase-view"
+            aria-label="System Walkthrough and Demo Video"
+            className="max-w-[1160px] mx-auto px-6 py-8 space-y-6"
+          >
+            {/* Masthead Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-5 border-b border-stone-300/80 dark:border-zinc-800">
+              <div className="space-y-1.5 max-w-2xl">
+                <p className="uppercase tracking-wider text-[11px] font-mono text-[#D95D39] dark:text-[#E87A5A] font-semibold">
+                  00 // SYSTEM WALKTHROUGH &amp; DEMO
+                </p>
+                <h1
+                  className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900 dark:text-stone-100 font-display"
+                  style={{ textWrap: 'balance' }}
+                >
+                  Socratica Studio — Multimodal Voice &amp; Concept Classroom
+                </h1>
+                <p className="text-sm text-stone-600 dark:text-stone-400 leading-relaxed">
+                  Watch the full architectural walkthrough demonstrating document parsing with NVIDIA
+                  Nemotron Parse, adaptive lesson synthesis, and Socratic/Feynman voice checkpoints.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  id="toggle-demo-url-editor-btn"
+                  type="button"
+                  onClick={() => setIsDemoUrlEditorOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-stone-300/90 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] hover:bg-[#EFECE6] dark:hover:bg-[#222220] text-xs font-mono font-medium text-stone-700 dark:text-stone-300 transition-colors cursor-pointer"
+                >
+                  <Settings2 className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A]" />
+                  <span>{isDemoUrlEditorOpen ? 'Hide Video URL Config' : 'Configure YouTube URL'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Subtle Collapsible YouTube URL Configuration Bar (Persisted in localStorage) */}
+            {isDemoUrlEditorOpen && (
+              <form
+                onSubmit={handleSaveDemoYoutubeUrl}
+                className="rounded-md border border-stone-300/90 dark:border-zinc-800 bg-[#EFECE6]/70 dark:bg-[#222220] p-4 space-y-2.5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label
+                    htmlFor="demo-youtube-url-input"
+                    className="uppercase tracking-wider text-[11px] font-mono font-semibold text-zinc-900 dark:text-stone-100"
+                  >
+                    DEMO YOUTUBE SOURCE URL (WATCH, YOUTU.BE, OR EMBED LINK):
+                  </label>
+                  <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                    Resolved Embed: {activeEmbedUrl}
+                  </span>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <input
+                    id="demo-youtube-url-input"
+                    type="text"
+                    value={demoUrlInputDraft}
+                    onChange={(e) => setDemoUrlInputDraft(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    className="flex-1 min-w-0 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] px-3 py-2 text-xs font-mono text-zinc-900 dark:text-stone-100 focus:outline-none focus:border-[#D95D39]"
+                  />
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      id="save-demo-youtube-url-btn"
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#D95D39] hover:bg-[#C04E2C] text-white text-xs font-mono font-semibold uppercase tracking-wider transition-colors cursor-pointer"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{demoUrlSavedNotice ? 'Saved' : 'Apply URL'}</span>
+                    </button>
+
+                    <button
+                      id="reset-demo-youtube-url-btn"
+                      type="button"
+                      onClick={handleResetDemoYoutubeUrl}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-stone-300/90 dark:border-zinc-700 bg-[#FCFBF9] dark:bg-[#181816] hover:bg-[#F7F6F2] dark:hover:bg-[#111110] text-xs font-mono text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset Default</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {/* Sharp Architectural 16:9 YouTube Frame */}
+            <div className="border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] p-2 sm:p-4 space-y-3">
+              {/* Crisp Monospace Header Bar inside Frame */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-2 py-1.5 border-b border-stone-300/80 dark:border-zinc-800 bg-[#EFECE6]/60 dark:bg-[#222220]">
+                <div className="flex items-center gap-2">
+                  <Play className="w-3.5 h-3.5 text-[#D95D39] dark:text-[#E87A5A] shrink-0" />
+                  <span className="uppercase tracking-wider text-[11px] font-mono font-bold text-zinc-900 dark:text-stone-100">
+                    00 // SYSTEM WALKTHROUGH &amp; DEMO
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                  16:9 HD · YOUTUBE EMBED STREAM
+                </span>
+              </div>
+
+              {/* 16:9 Responsive YouTube Iframe */}
+              <div className="relative w-full aspect-video bg-[#111110] border border-stone-300/80 dark:border-zinc-800 overflow-hidden">
+                <iframe
+                  id="demo-youtube-iframe"
+                  src={activeEmbedUrl}
+                  title="Socratica Studio System Walkthrough and Demo"
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+
+            {/* 3-Column Architectural Spec Strip & Primary Launch CTA */}
+            <div className="border border-stone-300 dark:border-zinc-800 bg-[#FCFBF9] dark:bg-[#181816] divide-y divide-stone-300/80 dark:divide-zinc-800">
+              <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-stone-300/80 dark:divide-zinc-800">
+                {/* Column 01 */}
+                <div className="p-5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase tracking-wider text-[11px] font-mono font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                      01. UPLOAD &amp; PARSE
+                    </span>
+                    <FileText className="w-4 h-4 text-stone-500 dark:text-stone-400 shrink-0" />
+                  </div>
+                  <h2 className="text-sm font-bold text-zinc-900 dark:text-stone-100 font-display">
+                    Manuscript &amp; Diagram Ingestion
+                  </h2>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                    Upload PDFs, lecture slides, or raw markdown in the Setup Studio. NVIDIA Nemotron
+                    Parse extracts structured text while preserving the original source document for
+                    side-by-side inspection.
+                  </p>
+                </div>
+
+                {/* Column 02 */}
+                <div className="p-5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase tracking-wider text-[11px] font-mono font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                      02. DYNAMIC SYNTHESIS
+                    </span>
+                    <Sliders className="w-4 h-4 text-stone-500 dark:text-stone-400 shrink-0" />
+                  </div>
+                  <h2 className="text-sm font-bold text-zinc-900 dark:text-stone-100 font-display">
+                    Pedagogical Calibration
+                  </h2>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                    Configure target academic level, explanation simplicity (1–5), and Socratic or
+                    Feynman methodology. The backend compiles dynamic concept modules with everyday
+                    mental models.
+                  </p>
+                </div>
+
+                {/* Column 03 */}
+                <div className="p-5 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase tracking-wider text-[11px] font-mono font-bold text-[#D95D39] dark:text-[#E87A5A]">
+                      03. MULTIMODAL MASTERY
+                    </span>
+                    <Mic className="w-4 h-4 text-stone-500 dark:text-stone-400 shrink-0" />
+                  </div>
+                  <h2 className="text-sm font-bold text-zinc-900 dark:text-stone-100 font-display">
+                    Interactive Voice &amp; Understanding Gates
+                  </h2>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 leading-relaxed">
+                    Listen to natural neural TTS narration synced with visual breakdowns, test
+                    parameters in the Loss Landscape sandbox, and explain concepts aloud to pass the
+                    True Understanding Gate.
+                  </p>
+                </div>
+              </div>
+
+              {/* Bottom CTA Bar */}
+              <div className="px-5 py-4 bg-[#EFECE6]/70 dark:bg-[#222220] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="text-xs font-bold text-zinc-900 dark:text-stone-100 font-display">
+                    Ready to configure your own study session?
+                  </p>
+                  <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                    PROCEED TO STEP 01 // PUBLICATION &amp; SYLLABUS DESK
+                  </p>
+                </div>
+
+                <button
+                  id="launch-setup-studio-btn"
+                  type="button"
+                  onClick={() => setActiveView('studio')}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-[#D95D39] hover:bg-[#C04E2C] text-white text-xs font-mono font-bold uppercase tracking-wider border border-[#D95D39] transition-colors cursor-pointer whitespace-nowrap shrink-0"
+                >
+                  <span>Launch 01 // Setup Studio →</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </section>
+        ) : activeView === 'studio' ? (
           <SetupStudio
             fileName={fileName}
             contentType={contentType}
@@ -706,3 +995,4 @@ export default function MultimodalTutorApp() {
     </div>
   );
 }
+

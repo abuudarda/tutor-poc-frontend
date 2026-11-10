@@ -1771,3 +1771,69 @@ export function extractSpeechRecognitionChunks(
   };
 }
 
+export const DEFAULT_DEMO_YOUTUBE_URL = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+
+/**
+ * Converts any standard YouTube link (youtube.com/watch?v=ID, youtu.be/ID,
+ * youtube.com/embed/ID, youtube.com/shorts/ID, or raw 11-char ID) into a valid
+ * embed URL: https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1
+ */
+export function getYouTubeEmbedUrl(url: string): string {
+  const fallbackId = 'dQw4w9WgXcQ';
+  const raw = (url || '').trim();
+  if (!raw) {
+    return `https://www.youtube.com/embed/${fallbackId}?rel=0&modestbranding=1`;
+  }
+
+  // Raw 11-character YouTube video ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(raw)) {
+    return `https://www.youtube.com/embed/${raw}?rel=0&modestbranding=1`;
+  }
+
+  let extractedId: string | null = null;
+
+  try {
+    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, '').toLowerCase();
+
+    if (host === 'youtu.be') {
+      const seg = parsed.pathname.split('/').filter(Boolean)[0];
+      if (seg && /^[a-zA-Z0-9_-]{6,20}$/.test(seg)) {
+        extractedId = seg;
+      }
+    } else if (host.endsWith('youtube.com') || host.endsWith('youtube-nocookie.com')) {
+      const vParam = parsed.searchParams.get('v');
+      if (vParam && /^[a-zA-Z0-9_-]{6,20}$/.test(vParam)) {
+        extractedId = vParam;
+      } else {
+        const parts = parsed.pathname.split('/').filter(Boolean);
+        const prefixIdx = parts.findIndex((p) =>
+          ['embed', 'shorts', 'live', 'v'].includes(p.toLowerCase())
+        );
+        if (prefixIdx !== -1 && parts[prefixIdx + 1]) {
+          const candidate = parts[prefixIdx + 1];
+          if (/^[a-zA-Z0-9_-]{6,20}$/.test(candidate)) {
+            extractedId = candidate;
+          }
+        }
+      }
+    }
+  } catch {
+    // Regex fallback if URL constructor fails
+  }
+
+  if (!extractedId) {
+    const regexMatch = raw.match(
+      /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/)|youtu\.be\/)([a-zA-Z0-9_-]{6,20})/i
+    );
+    if (regexMatch && regexMatch[1]) {
+      extractedId = regexMatch[1];
+    }
+  }
+
+  const finalId = extractedId || fallbackId;
+  return `https://www.youtube.com/embed/${finalId}?rel=0&modestbranding=1`;
+}
+
+

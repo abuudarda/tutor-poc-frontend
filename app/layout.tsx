@@ -42,6 +42,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         suppressHydrationWarning
       >
         {children}
+        <div
+          id="copyright-signature"
+          aria-label="Copyright ABU Darda"
+          className="fixed bottom-1.5 right-3 z-40 pointer-events-none select-none text-[10px] font-mono tracking-wider text-stone-400/80 dark:text-zinc-600"
+        >
+          © ABU Darda
+        </div>
       </body>
     </html>
   );
